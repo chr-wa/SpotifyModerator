@@ -304,7 +304,7 @@ const state = {
   announce: localStorage.getItem(LS_ANN) !== "0",
   deviceId: null, player: null, playing: false, volume: 0.8, volumeNow: 0.8,
   lastAnnounced: null, announcing: false,
-  currentTrackId: null, playingPlaylistId: null, playingPlaylistName: null
+  currentTrackId: null, playingPlaylistId: null, playingPlaylistName: null, lastStarted: null
 };
 
 /* ---------------------------------------------------------------- Icons */
@@ -604,6 +604,7 @@ async function startPlaylist() {
       body: JSON.stringify({ context_uri: "spotify:playlist:" + state.current.id })
     });
     $("controls").className = "show";
+    state.lastStarted = { id: state.current.id, name: state.current.name };
     setStatus("");
   } catch (e) {
     setStatus("");
@@ -629,6 +630,7 @@ async function playTrackAt(index, trackId) {
       })
     });
     $("controls").className = "show";
+    state.lastStarted = { id: state.current.id, name: state.current.name };
     setStatus("");
   } catch (e) {
     setStatus("");
@@ -639,7 +641,8 @@ async function playTrackAt(index, trackId) {
 /* Zur Playlist springen, aus der der laufende Titel kommt – auch wenn gerade
    die Startseite oder eine andere Playlist offen ist. */
 async function jumpToPlayingPlaylist() {
-  const id = state.playingPlaylistId;
+  // Vorrang: Kontext aus dem Player. Rückfall: die Playlist, die wir zuletzt gestartet haben.
+  const id = state.playingPlaylistId || (state.lastStarted && state.lastStarted.id);
   if (!id) {
     showNotice("Die Wiedergabe läuft gerade nicht aus einer Playlist.");
     return;
@@ -664,7 +667,8 @@ function onPlayerState(s) {
   const track = s.track_window && s.track_window.current_track;
   state.playing = !s.paused;
   // Kontext merken: aus welcher Playlist läuft das gerade?
-  const ctx = s.track_window && s.track_window.context;
+  // Das SDK liefert ihn auf oberster Ebene (state.context), nicht in track_window.
+  const ctx = s.context || (s.track_window && s.track_window.context);
   if (ctx && ctx.uri && ctx.uri.startsWith("spotify:playlist:")) {
     state.playingPlaylistId = ctx.uri.split(":").pop();
     state.playingPlaylistName = (ctx.metadata && ctx.metadata.context_description) || state.playingPlaylistName;

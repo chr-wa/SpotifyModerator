@@ -151,12 +151,10 @@
   }
   window.Spotify = { Player: MockPlayer };
 
-  // Trackwechsel simulieren
+  // Trackwechsel simulieren (context liegt – wie im echten SDK – auf oberster Ebene)
   window.__track = (id, name, artists, ctxId, ctxName) => window.__player.emit("player_state_changed", {
     paused: false,
-    track_window: {
-      current_track: { id, name, artists: artists.map(a => ({ name: a })) },
-      context: { uri: "spotify:playlist:" + (ctxId || "p1"), metadata: { context_description: ctxName || "[MOD] Favoriten" } }
-    }
+    context: { uri: "spotify:playlist:" + (ctxId || "p1"), metadata: { context_description: ctxName || "[MOD] Favoriten" } },
+    track_window: { current_track: { id, name, artists: artists.map(a => ({ name: a })) } }
   });
 })();
