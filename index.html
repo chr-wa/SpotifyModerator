@@ -59,7 +59,9 @@ h1 .hint{position:absolute;top:1px;right:0;font-size:.7rem;font-weight:600;color
   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .detail-head .cnt{font-size:.75rem;color:var(--dim);margin-top:4px}
 .tracklist{display:flex;flex-direction:column;gap:2px;margin-bottom:16px}
-.trow{display:flex;gap:10px;padding:9px 8px;border-radius:9px;font-size:.85rem;align-items:baseline}
+.trow{display:flex;gap:10px;padding:9px 8px;border-radius:9px;font-size:.85rem;align-items:baseline;cursor:pointer}
+.trow:active{background:#2a2a2a}
+.trow .pl{color:#4d4d4d;font-size:.75rem;min-width:12px}
 .trow .n{color:#6f6f6f;min-width:22px;text-align:right;font-variant-numeric:tabular-nums}
 .trow .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .trow .a{color:var(--dim);font-size:.75rem;max-width:38%;overflow:hidden;
@@ -535,15 +537,20 @@ function renderDetail() {
     </div>
     <div class="tracklist" id="tracks">
       ${c.tracks.map((t, i) => `
-        <div class="trow" data-id="${esc(t.id)}">
+        <div class="trow" data-id="${esc(t.id)}" data-idx="${i}">
           <span class="n">${i + 1}</span>
           <span class="t">${esc(t.name)}</span>
           <span class="a">${esc(t.artists)}</span>
           <span class="y" style="color:#6f6f6f;font-size:.72rem;min-width:34px;text-align:right">${t.year || ""}</span>
+          <span class="pl">▸</span>
         </div>`).join("")}
     </div>`);
   $("back").onclick = () => { state.current = null; state.searchResults = null; renderHome(); };
   $("start").onclick = () => startPlaylist();
+  // Tippen auf einen Titel spielt ab dieser Stelle der Playlist ab
+  document.querySelectorAll(".trow").forEach(row => {
+    row.onclick = () => playTrackAt(Number(row.dataset.idx), row.dataset.id);
+  });
   $("voicetest").onclick = () => {
     speak('So klingt die Ansage: „Take Five“ von The Dave Brubeck Quartet, 1959.');
   };
@@ -600,6 +607,31 @@ async function startPlaylist() {
   } catch (e) {
     setStatus("");
     showNotice("Start fehlgeschlagen: " + e.message);
+  }
+}
+
+/* Tippen auf einen Titel: die Playlist startet an genau dieser Position. */
+async function playTrackAt(index, trackId) {
+  if (!state.current) return;
+  setStatus("Starte …");
+  document.querySelectorAll(".trow.now").forEach(e => e.classList.remove("now"));
+  const row = document.querySelector(`.trow[data-idx="${index}"]`);
+  if (row) row.classList.add("now");
+  try {
+    const dev = state.deviceId || await sdkReady;
+    await api(`/me/player/play?device_id=${encodeURIComponent(dev)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        context_uri: "spotify:playlist:" + state.current.id,
+        offset: { position: index }
+      })
+    });
+    $("controls").className = "show";
+    setStatus("");
+  } catch (e) {
+    setStatus("");
+    showNotice("Titel konnte nicht gestartet werden: " + e.message);
   }
 }
 

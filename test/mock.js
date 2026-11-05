@@ -63,6 +63,7 @@
   window.__fetches = [];
   window.__spoken = [];
   window.__calls = [];
+  window.__bodies = [];
 
   const json = (data) => new Response(JSON.stringify(data), {
     status: 200, headers: { "Content-Type": "application/json" }
@@ -102,7 +103,7 @@
       });
     }
 
-    if (u.includes("/me/player/play")) return new Response(null, { status: 204 });
+    if (u.includes("/me/player/play")) { if (opts && opts.body) window.__bodies.push(opts.body); return new Response(null, { status: 204 }); }
     if (u.includes("musicbrainz.org")) {
       return json({ recordings: [{ "first-release-date": "1975-10-31" }] });
     }
