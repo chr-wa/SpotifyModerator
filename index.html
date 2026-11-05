@@ -633,7 +633,9 @@ async function announceTrack(track) {
     await sleep(250);
     let year = (state.trackMeta.get(track.id) || {}).year || null;
     if (!year) year = await lookupYear(track);   // z.B. Titel nicht in der geladenen Liste
-    const text = `„${title}“ von ${artist}${year ? ", " + year : ""}.`;
+    const text = curLang() === "en"
+      ? `“${title}” by ${artist}${year ? ", " + year : ""}.`
+      : `„${title}“ von ${artist}${year ? ", " + year : ""}.`;
     setStatus("Ansage: " + text);
     // Untergrenze gegen ein zu früh gemeldetes "onend": ~3 Wörter/Sekunde
     const words = text.split(/\s+/).filter(Boolean).length;
@@ -678,27 +680,35 @@ function sdkCall(fn, arg) {
 }
 
 /* ---------------------------------------------------------------- Stimmen */
-const VOICE_LS = "mod.voice";
-const MALE_RE = /markus|yannick|conrad|klaus|stefan|michael|hans|daniel|male|männlich|man\b/i;
+const VOICE_LS = "mod.voice", LANG_LS = "mod.lang";
+const MALE_RE = {
+  de: /markus|yannick|conrad|klaus|stefan|michael|hans|daniel|männlich|male/i,
+  en: /david|mark\b|george|james|daniel|arthur|alex|fred|oliver|guy|male/i
+};
 
-function germanVoices() {
-  try { return (speechSynthesis.getVoices() || []).filter(v => /^de/i.test(v.lang)); }
+function curLang() { return localStorage.getItem(LANG_LS) === "de" ? "de" : "en"; }
+
+function voicesFor(lang) {
+  try { return (speechSynthesis.getVoices() || []).filter(v => new RegExp("^" + lang, "i").test(v.lang)); }
   catch { return []; }
 }
 
-/* Reihenfolge: gespeicherte Wahl -> männliche Stimme -> erste deutsche. */
-function pickGermanVoice() {
-  const vs = germanVoices();
+/* Reihenfolge: gespeicherte Wahl -> männliche Stimme -> erste Stimme der Sprache. */
+function pickVoice() {
+  const lang = curLang();
+  const vs = voicesFor(lang);
   if (!vs.length) return null;
   const saved = localStorage.getItem(VOICE_LS);
   if (saved) { const v = vs.find(x => x.name === saved); if (v) return v; }
-  return vs.find(v => MALE_RE.test(v.name)) || vs[0];
+  return vs.find(v => MALE_RE[lang].test(v.name)) || vs[0];
 }
 
 function voiceBarHtml() {
   return `<div class="voicebar">
-    <label for="voicesel">Stimme</label>
-    <select id="voicesel"></select>
+    <select id="langsel" aria-label="Sprache">
+      <option value="en">English</option><option value="de">Deutsch</option>
+    </select>
+    <select id="voicesel" aria-label="Stimme"></select>
     <button id="vtest">Anhören</button>
   </div>`;
 }
@@ -706,22 +716,32 @@ function voiceBarHtml() {
 function fillVoices() {
   const sel = $("voicesel");
   if (!sel) return;
-  const vs = germanVoices();
-  const saved = localStorage.getItem(VOICE_LS);
-  const active = pickGermanVoice();
+  const lang = curLang();
+  const vs = voicesFor(lang);
+  const active = pickVoice();
   sel.innerHTML = vs.length
-    ? vs.map(v => `<option value="${esc(v.name)}"${active && v.name === active.name ? " selected" : ""}>${esc(v.name)}${MALE_RE.test(v.name) ? " ♂" : ""}</option>`).join("")
-    : `<option value="">keine deutschen Stimmen gefunden</option>`;
+    ? vs.map(v => `<option value="${esc(v.name)}"${active && v.name === active.name ? " selected" : ""}>${esc(v.name)}${MALE_RE[lang].test(v.name) ? " ♂" : ""}</option>`).join("")
+    : `<option value="">keine ${lang === "en" ? "englische" : "deutsche"} Stimme gefunden</option>`;
+  const saved = localStorage.getItem(VOICE_LS);
   if (saved && vs.some(v => v.name === saved)) sel.value = saved;
 }
 
 function bindVoiceBar() {
   const sel = $("voicesel");
   if (!sel) return;
+  const langSel = $("langsel");
+  langSel.value = curLang();
+  langSel.onchange = () => {
+    localStorage.setItem(LANG_LS, langSel.value);
+    localStorage.removeItem(VOICE_LS);     // alte Stimme passt nicht zur neuen Sprache
+    fillVoices();
+  };
   fillVoices();
   sel.onchange = () => { localStorage.setItem(VOICE_LS, sel.value); };
   $("vtest").onclick = () => {
-    speak('So klingt die Ansage: „Take Five“ von The Dave Brubeck Quartet, 1959.');
+    speak(curLang() === "en"
+      ? 'This is how the announcement sounds: “Take Five” by The Dave Brubeck Quartet, 1959.'
+      : 'So klingt die Ansage: „Take Five“ von The Dave Brubeck Quartet, 1959.');
   };
   // Stimmenliste kommt in Chrome asynchron nach
   if ("speechSynthesis" in window && !window.__voicesBound) {
@@ -737,10 +757,11 @@ function speak(text) {
     if (!("speechSynthesis" in window)) return resolve();
     try { speechSynthesis.cancel(); } catch {}
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = "de-DE";
-    u.rate = 0.95;
-    u.pitch = 0.95;
-    const v = pickGermanVoice();
+    const lang = curLang();
+    u.lang = lang === "en" ? "en-US" : "de-DE";
+    u.rate = lang === "en" ? 1.0 : 0.95;
+    u.pitch = 1.0;
+    const v = pickVoice();
     if (v) u.voice = v;
     let done = false;
     const finish = () => { if (!done) { done = true; resolve(); } };

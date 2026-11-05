@@ -11,6 +11,8 @@
   }
   localStorage.setItem("mod.announce", "1");
   localStorage.removeItem("mod.years");
+  localStorage.removeItem("mod.lang");
+  localStorage.removeItem("mod.voice");
 
   const IMG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 
@@ -111,7 +113,9 @@
   window.__voices = [
     { lang: "de-DE", name: "Anna" },
     { lang: "de-DE", name: "Microsoft Stefan" },
-    { lang: "en-US", name: "Samantha" }
+    { lang: "en-US", name: "Samantha" },
+    { lang: "en-US", name: "Microsoft David" },
+    { lang: "en-GB", name: "Daniel" }
   ];
   Object.defineProperty(window, "speechSynthesis", {
     configurable: true,

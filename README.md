@@ -38,8 +38,11 @@ ein eigenes Projekt mit eigenem Namensraum.
   `pause()` im SDK einen Moment braucht und bei laut beginnenden Titeln die Stimme
   sonst untergeht; zusätzlich wartet die App eine aus der Textlänge geschätzte
   Mindestdauer ab, damit ein verfrühtes `onend` die Musik nicht zu früh startet.
-- Stimme: männliche deutsche Stimme wird bevorzugt (Markus, Stefan, Conrad, Klaus …),
-  auswählbar über „Stimme" unten auf der Startseite. Sprechgeschwindigkeit 0,95.
+- Stimme: **englische** männliche Stimme als Standard (David, Mark, Daniel …) — die
+  meisten Titel und Interpreten sind englisch und klingen deutsch vorgelesen schräg.
+  Unten auf der Startseite stehen Sprachschalter (English/Deutsch), Stimmenauswahl
+  und „Anhören"; die Wahl liegt in `localStorage`. Für deutsche Hörspiele auf
+  Deutsch umschalten, dann wird auch der Satz deutsch („… von …").
 - Klick auf die Überschrift **Moderator** führt zurück ins Hauptmenü.
 - Jahre kommen aus `album.release_date`. Bei Compilations/Singles ist das
   unzuverlässig („Bohemian Rhapsody“ steht auf *Greatest Hits* mit 2011), deshalb
