@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#121212">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Spotify Moderator</title>
+<link rel="manifest" href="manifest.json">
+<style>
+:root{
+  --bg:#121212; --card:#1e1e1e; --card2:#252525; --txt:#f2f2f2; --dim:#9a9a9a;
+  --green:#1db954; --yellow:#c9a227; --red:#e04b4b;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:0 14px 130px;min-height:100vh}
+h1{position:relative;font-size:1.25rem;font-weight:600;text-align:center;
+  margin:16px 0 14px;padding:0 42px;letter-spacing:.02em}
+h1 .hint{position:absolute;top:1px;right:0;font-size:.7rem;font-weight:600;color:#6f6f6f}
+
+/* Suche */
+.search{display:flex;gap:8px;margin:0 0 16px}
+.search input{flex:1;min-width:0;background:var(--card);border:1px solid #333;color:var(--txt);
+  border-radius:12px;padding:12px 14px;font-size:1rem;outline:none}
+.search input:focus{border-color:#4a4a4a}
+.search button{background:var(--card);border:1px solid #333;color:var(--txt);
+  border-radius:12px;padding:0 16px;font-size:1.1rem;cursor:pointer}
+.search button:active{background:var(--card2)}
+
+/* Kacheln */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.tile{background:var(--card);border-radius:14px;overflow:hidden;cursor:pointer;
+  display:flex;flex-direction:column;transition:transform .08s}
+.tile:active{transform:scale(.98)}
+.tile img{width:100%;aspect-ratio:1/1;object-fit:cover;background:#2a2a2a;display:block}
+.tile .cap{padding:9px 10px 11px;font-size:.82rem;line-height:1.25;color:#ddd;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tile .sub{padding:0 10px 10px;margin-top:-4px;font-size:.7rem;color:var(--dim)}
+.section{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);
+  margin:20px 2px 10px}
+
+/* Detail */
+.detail-head{display:flex;gap:12px;align-items:center;margin:4px 0 14px}
+.detail-head img{width:76px;height:76px;border-radius:10px;object-fit:cover;background:#2a2a2a}
+.detail-head .meta{min-width:0}
+.detail-head .name{font-size:1rem;font-weight:600;line-height:1.25;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.detail-head .cnt{font-size:.75rem;color:var(--dim);margin-top:4px}
+.tracklist{display:flex;flex-direction:column;gap:2px;margin-bottom:16px}
+.trow{display:flex;gap:10px;padding:9px 8px;border-radius:9px;font-size:.85rem;align-items:baseline}
+.trow .n{color:#6f6f6f;min-width:22px;text-align:right;font-variant-numeric:tabular-nums}
+.trow .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trow .a{color:var(--dim);font-size:.75rem;max-width:38%;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.trow.now{background:#1d3323}
+.actions{display:flex;gap:10px;margin:6px 0 18px;flex-wrap:wrap}
+
+/* Buttons */
+.btn{background:var(--card);border:1px solid #333;color:var(--txt);border-radius:12px;
+  padding:13px 18px;font-size:.95rem;cursor:pointer;flex:1;min-width:120px}
+.btn.primary{background:var(--green);border-color:var(--green);color:#06240f;font-weight:700}
+.btn:active{filter:brightness(.92)}
+.btn.on{background:#173d24;border-color:#2a6b3d;color:#9ae6b4}
+
+/* Steuerleiste */
+#controls{position:fixed;left:0;right:0;bottom:0;background:#181818;border-top:1px solid #262626;
+  padding:9px 14px calc(9px + env(safe-area-inset-bottom));display:none;z-index:20}
+#controls.show{display:block}
+.now{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.now .dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex:none}
+.now .txt{font-size:.78rem;color:#cfcfcf;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.row{display:flex;align-items:center;justify-content:center;gap:22px}
+.pb{background:none;border:none;color:var(--txt);font-size:1.5rem;cursor:pointer;padding:6px 4px;line-height:1}
+.pb.primary{font-size:2rem;color:var(--green)}
+.pb.small{font-size:1.05rem;color:var(--dim)}
+.pb.small.on{color:var(--yellow)}
+
+/* Meldungen */
+#notice{position:fixed;left:12px;right:12px;bottom:96px;z-index:30;display:none;
+  background:#3a1f1f;border:1px solid #6b2e2e;color:#ffd7d7;border-radius:12px;
+  padding:12px 14px;font-size:.85rem;line-height:1.3}
+#notice.show{display:block}
+#notice.ok{background:#173d24;border-color:#2a6b3d;color:#c8f2d8}
+#status{font-size:.72rem;color:var(--yellow);text-align:center;min-height:14px;margin-top:4px}
+
+/* Login */
+.login{max-width:380px;margin:12vh auto 0;text-align:center}
+.login p{color:var(--dim);font-size:.9rem;line-height:1.5}
+.login .btn{margin-top:18px;width:100%}
+.spinner{width:26px;height:26px;border:3px solid #2c2c2c;border-top-color:var(--green);
+  border-radius:50%;animation:sp .8s linear infinite;margin:26px auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+
+<h1><span id="title-text">Moderator</span><span class="hint" id="hint"></span></h1>
+
+<div id="app">
+  <div id="loading" class="spinner"></div>
+</div>
+
+<div id="controls">
+  <div class="now"><span class="dot" id="dot"></span><span class="txt" id="now-text">–</span></div>
+  <div class="row">
+    <button class="pb" id="prev" aria-label="Zurück"></button>
+    <button class="pb primary" id="playpause" aria-label="Play/Pause"></button>
+    <button class="pb" id="next" aria-label="Weiter"></button>
+    <button class="pb small on" id="announce" aria-label="Ansage an/aus"></button>
+  </div>
+  <div id="status"></div>
+</div>
+
+<div id="notice"></div>
+
+<script>
+"use strict";
+
+/* ---------------------------------------------------------------- Konfiguration */
+const CLIENT_ID = "a6c7e7f802d043c29cce919b9e0c7f45";
+const PROD_REDIRECT = "https://chr-wa.github.io/SpotifyModerator/";
+const REDIRECT_URI = (location.hostname === "127.0.0.1" || location.hostname === "localhost")
+  ? location.origin + location.pathname
+  : PROD_REDIRECT;
+const SCOPES = "streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state playlist-read-private playlist-read-collaborative";
+const API = "https://api.spotify.com/v1";
+const TOKEN_URL = "https://accounts.spotify.com/api/token";
+const LS_TOKENS = "mod.tokens", LS_PKCE = "mod.pkce", LS_YEARS = "mod.years", LS_ANN = "mod.announce";
+const PREFIXES = [
+  { key: "music",   label: "Musik",     prefix: "[KPM]" },
+  { key: "audio",   label: "Hörspiele", prefix: "[KPH]" },
+  { key: "podcast", label: "Podcasts",  prefix: "[KPP]" }
+];
+
+/* ---------------------------------------------------------------- Kleinkram */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const stripPrefix = (name) => {
+  const p = PREFIXES.find(x => name && name.startsWith(x.prefix));
+  return p ? name.slice(p.prefix.length).trim() : name;
+};
+const prefixOf = (name) => (PREFIXES.find(x => name && name.startsWith(x.prefix)) || null);
+
+let noticeTimer = null;
+function showNotice(msg, ok) {
+  const n = $("notice");
+  n.textContent = msg;
+  n.className = "show" + (ok ? " ok" : "");
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => { n.className = ""; }, ok ? 3500 : 7000);
+}
+function setStatus(t) { $("status").textContent = t || ""; }
+function setHint(t) { $("hint").textContent = t || ""; }
+
+/* ---------------------------------------------------------------- Auth (PKCE) */
+function b64url(bytes) {
+  let s = "";
+  for (const b of new Uint8Array(bytes)) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function randomVerifier() {
+  const a = new Uint8Array(64);
+  crypto.getRandomValues(a);
+  return b64url(a);
+}
+async function challengeFor(verifier) {
+  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  return b64url(d);
+}
+
+const auth = {
+  get tokens() {
+    try { return JSON.parse(localStorage.getItem(LS_TOKENS) || "null"); } catch { return null; }
+  },
+  set tokens(t) {
+    if (t) localStorage.setItem(LS_TOKENS, JSON.stringify(t));
+    else localStorage.removeItem(LS_TOKENS);
+  },
+  valid() {
+    const t = this.tokens;
+    return !!(t && t.access && t.exp > Date.now() + 30000);
+  }
+};
+
+async function login() {
+  const verifier = randomVerifier();
+  localStorage.setItem(LS_PKCE, verifier);
+  const challenge = await challengeFor(verifier);
+  const u = new URL("https://accounts.spotify.com/authorize");
+  u.searchParams.set("client_id", CLIENT_ID);
+  u.searchParams.set("response_type", "code");
+  u.searchParams.set("redirect_uri", REDIRECT_URI);
+  u.searchParams.set("scope", SCOPES);
+  u.searchParams.set("code_challenge_method", "S256");
+  u.searchParams.set("code_challenge", challenge);
+  location.href = u.toString();
+}
+
+async function exchangeCode(code) {
+  const verifier = localStorage.getItem(LS_PKCE);
+  localStorage.removeItem(LS_PKCE);
+  if (!verifier) throw new Error("Login-Sitzung abgelaufen – bitte neu anmelden.");
+  const body = new URLSearchParams({
+    grant_type: "authorization_code", code,
+    redirect_uri: REDIRECT_URI, client_id: CLIENT_ID, code_verifier: verifier
+  });
+  const r = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body
+  });
+  if (!r.ok) throw new Error("Anmeldung fehlgeschlagen (" + r.status + ")");
+  saveTokens(await r.json());
+}
+
+function saveTokens(j) {
+  auth.tokens = {
+    access: j.access_token,
+    refresh: j.refresh_token || (auth.tokens && auth.tokens.refresh) || null,
+    exp: Date.now() + (j.expires_in || 3600) * 1000
+  };
+}
+
+async function refreshTokens() {
+  const t = auth.tokens;
+  if (!t || !t.refresh) return false;
+  const body = new URLSearchParams({
+    grant_type: "refresh_token", refresh_token: t.refresh, client_id: CLIENT_ID
+  });
+  const r = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body
+  });
+  if (!r.ok) { auth.tokens = null; return false; }
+  saveTokens(await r.json());
+  return true;
+}
+
+async function api(path, opts = {}, retry = true) {
+  if (!auth.valid()) {
+    const ok = await refreshTokens();
+    if (!ok) { showLogin("Sitzung abgelaufen."); throw new Error("kein Token"); }
+  }
+  const r = await fetch(API + path, {
+    ...opts,
+    headers: { Authorization: "Bearer " + auth.tokens.access, ...(opts.headers || {}) }
+  });
+  if (r.status === 401 && retry) {
+    if (await refreshTokens()) return api(path, opts, false);
+    showLogin("Sitzung abgelaufen.");
+    throw new Error("401");
+  }
+  if (r.status === 204) return null;
+  if (!r.ok) {
+    const txt = await r.text().catch(() => "");
+    throw new Error("Spotify " + r.status + (txt ? ": " + txt.slice(0, 120) : ""));
+  }
+  return r.json();
+}
+
+/* ---------------------------------------------------------------- Zustand */
+const state = {
+  playlists: [], searchResults: null, query: "",
+  current: null,            // {id,name,cover,tracks}
+  trackMeta: new Map(),     // trackId -> {title, artists, year, albumType, album}
+  announce: localStorage.getItem(LS_ANN) !== "0",
+  deviceId: null, player: null, playing: false,
+  lastAnnounced: null, announcing: false
+};
+
+/* ---------------------------------------------------------------- Icons */
+const ICONS = {
+  play: '<svg viewBox="0 0 24 24" width="26" height="26"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" width="26" height="26"><path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor"/></svg>',
+  prev: '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" fill="currentColor"/></svg>',
+  next: '<svg viewBox="0 0 24 24" width="22" height="22"><path d="M16 6h2v12h-2zM6 6l8.5 6L6 18z" fill="currentColor"/></svg>',
+  volOn: '<svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z" fill="currentColor"/></svg>',
+  volOff: '<svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 9v6h4l5 4V5L8 9H4zm12 1.4L14.4 12 16 13.6l1.4-1.4L19 13.6 20.4 12 19 10.6 20.4 9.2 19 7.8 17.4 9.4 16 8z" fill="currentColor"/></svg>'
+};
+function showLogin(msg) {
+  $("controls").className = "";
+  $("app").innerHTML = `
+    <div class="login">
+      <p>${esc(msg || "Bitte einmal mit Spotify anmelden. Die App spielt Musik im Browser und sagt vor jedem Titel Interpret, Titel und Jahr an.")}</p>
+      <button class="btn primary" id="loginbtn">Mit Spotify anmelden</button>
+      <p style="margin-top:14px;font-size:.75rem">Benötigt ein Spotify-Premium-Konto.</p>
+    </div>`;
+  $("loginbtn").onclick = () => login();
+}
+
+function shell(body) {
+  $("app").innerHTML = body;
+}
+
+function renderHome() {
+  const items = state.searchResults || state.playlists;
+  const isSearch = !!state.searchResults;
+  let html = `
+    <div class="search">
+      <input id="q" type="search" placeholder="Playlists suchen …" value="${esc(state.query)}" autocomplete="off">
+      <button id="qbtn" title="Suchen">🔍</button>
+    </div>`;
+  if (!isSearch) {
+    const byCat = PREFIXES.map(c => ({
+      c, list: state.playlists.filter(p => p.name && p.name.startsWith(c.prefix))
+    })).filter(x => x.list.length);
+    if (!byCat.length) {
+      html += `<div class="section">Keine Playlists mit Präfix gefunden</div>
+        <p style="color:var(--dim);font-size:.85rem;line-height:1.5">
+        Lege in Spotify Playlists an, deren Name mit <b>[KPM]</b> (Musik), <b>[KPH]</b> (Hörspiele)
+        oder <b>[KPP]</b> (Podcasts) beginnt – oder nutze die Suche oben.</p>`;
+    } else {
+      for (const g of byCat) html += `<div class="section">${esc(g.c.label)}</div>` + grid(g.list);
+    }
+  } else {
+    html += state.searchResults.length
+      ? grid(state.searchResults)
+      : `<p style="color:var(--dim);font-size:.85rem;margin-top:26px">Nichts gefunden für „${esc(state.query)}".</p>`;
+  }
+  shell(html);
+  $("q").onkeydown = (e) => { if (e.key === "Enter") doSearch($("q").value.trim()); };
+  $("qbtn").onclick = () => doSearch($("q").value.trim());
+  if (isSearch) {
+    const back = document.createElement("button");
+    back.className = "btn"; back.textContent = "← Eigene Playlists";
+    back.style.marginTop = "18px"; back.onclick = () => { state.searchResults = null; state.query = ""; renderHome(); };
+    $("app").appendChild(back);
+  }
+  bindTiles();
+}
+
+function grid(list) {
+  return `<div class="grid">` + list.map(p => {
+    const img = p.cover ? `<img src="${esc(p.cover)}" alt="" loading="lazy">` : `<div class="tile-noimg"></div>`;
+    const sub = p.owner ? `<div class="sub">${esc(p.owner)}</div>` : "";
+    return `<div class="tile" data-id="${esc(p.id)}" data-name="${esc(p.name)}">${img}
+      <div class="cap">${esc(stripPrefix(p.name))}</div>${sub}</div>`;
+  }).join("") + `</div>`;
+}
+
+function bindTiles() {
+  document.querySelectorAll(".tile").forEach(el => {
+    el.onclick = () => openPlaylist(el.dataset.id, el.dataset.name);
+  });
+}
+
+async function doSearch(q) {
+  if (!q) { state.searchResults = null; state.query = ""; renderHome(); return; }
+  state.query = q;
+  shell(`<div class="spinner"></div>`);
+  try {
+    const r = await api("/search?" + new URLSearchParams({ q, type: "playlist", limit: "24" }));
+    const items = (r.playlists && r.playlists.items) || [];
+    state.searchResults = items.filter(Boolean).map(p => ({
+      id: p.id, name: p.name,
+      cover: p.images && p.images.length ? p.images[p.images.length - 1].url : null,
+      owner: p.owner ? p.owner.display_name : ""
+    }));
+  } catch (e) {
+    state.searchResults = [];
+    showNotice("Suche fehlgeschlagen: " + e.message);
+  }
+  renderHome();
+}
+
+async function loadPlaylists() {
+  const r = await api("/me/playlists?limit=50");
+  state.playlists = ((r.items) || []).filter(p => p && p.name && prefixOf(p.name)).map(p => ({
+    id: p.id, name: p.name,
+    cover: p.images && p.images.length ? p.images[p.images.length - 1].url : null,
+    owner: ""
+  }));
+}
+
+async function openPlaylist(id, name) {
+  setHint("");
+  shell(`<div class="spinner"></div>`);
+  try {
+    const r = await api(`/playlists/${id}/tracks?limit=100&fields=` +
+      encodeURIComponent("items(track(id,name,duration_ms,artists(name),album(id,name,release_date,album_type,images,artists(name))),episode(id,name,duration_ms,release_date,images,show(name,publisher)))"));
+    const raw = (r.items || []).map(i => i && (i.track || i.episode)).filter(t => t && t.id);
+    const cover = raw.find(t => (t.album || t).images && (t.album || t).images.length);
+    state.current = {
+      id, name: stripPrefix(name),
+      cover: cover ? (cover.album || cover).images[(cover.album || cover).images.length - 1].url : null,
+      tracks: raw.map(t => {
+        const isEp = !t.artists && !!(t.show || t.release_date);
+        return {
+          id: t.id, name: t.name,
+          artists: isEp ? (t.show ? t.show.name : "Podcast") : (t.artists || []).map(a => a.name).join(", "),
+          album: isEp ? (t.show ? t.show.name : "") : (t.album ? t.album.name : ""),
+          year: isEp ? (parseInt(String(t.release_date || "").slice(0, 4), 10) || null) : yearFromAlbum(t.album),
+          albumType: isEp ? "episode" : (t.album ? t.album.album_type : "")
+        };
+      })
+    };
+    state.current.tracks.forEach(t => state.trackMeta.set(t.id, t));
+    renderDetail();
+    enrichYears(state.current.tracks).catch(() => {});
+  } catch (e) {
+    showNotice("Playlist konnte nicht geladen werden: " + e.message);
+    renderHome();
+  }
+}
+
+function yearFromAlbum(album) {
+  if (!album || !album.release_date) return null;
+  const y = parseInt(String(album.release_date).slice(0, 4), 10);
+  return isNaN(y) ? null : y;
+}
+
+/* Jahre aus Compilations sind unzuverlässig -> MusicBrainz, gedrosselt & gecacht. */
+const yearCache = (() => {
+  try { return JSON.parse(localStorage.getItem(LS_YEARS) || "{}"); } catch { return {}; }
+})();
+function saveYearCache() {
+  try { localStorage.setItem(LS_YEARS, JSON.stringify(yearCache)); } catch {}
+}
+let mbChain = Promise.resolve();
+function musicBrainzYear(title, artist) {
+  mbChain = mbChain.then(async () => {
+    await new Promise(r => setTimeout(r, 1100)); // 1 Request/s
+    const q = `recording:"${title.replace(/"/g, "")}" AND artist:"${artist.replace(/"/g, "")}"`;
+    const r = await fetch("https://musicbrainz.org/ws/2/recording/?query=" +
+      encodeURIComponent(q) + "&fmt=json&limit=1");
+    if (!r.ok) throw new Error("mb " + r.status);
+    const j = await r.json();
+    const rec = j.recordings && j.recordings[0];
+    if (!rec) return null;
+    const d = rec["first-release-date"] || (rec.releases && rec.releases[0] && rec.releases[0].date) || "";
+    const y = parseInt(String(d).slice(0, 4), 10);
+    return isNaN(y) ? null : y;
+  }).catch(() => null);
+  return mbChain;
+}
+
+async function enrichYears(tracks) {
+  const todo = tracks.filter(t => t.albumType && t.albumType !== "album" && !yearCache[t.id]);
+  for (const t of todo) {
+    const y = await musicBrainzYear(t.name, t.artists.split(",")[0].trim());
+    if (y) {
+      yearCache[t.id] = y;
+      t.year = y;
+      const meta = state.trackMeta.get(t.id);
+      if (meta) meta.year = y;
+      saveYearCache();
+      if (state.current && state.current.id && document.getElementById("tracks")) {
+        const el = document.querySelector(`.trow[data-id="${t.id}"] .y`);
+        if (el) el.textContent = y;
+      }
+    }
+  }
+}
+
+function renderDetail() {
+  const c = state.current;
+  if (!c) return renderHome();
+  shell(`
+    <div class="detail-head">
+      ${c.cover ? `<img src="${esc(c.cover)}" alt="">` : `<img alt="">`}
+      <div class="meta">
+        <div class="name">${esc(c.name)}</div>
+        <div class="cnt">${c.tracks.length} Titel</div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="start">${ICONS.play.replace('width="26" height="26"', 'width="18" height="18" style="vertical-align:-3px;margin-right:6px"')} Playlist starten</button>
+      <button class="btn" id="voicetest">Stimme testen</button>
+      <button class="btn" id="back">← Zurück</button>
+    </div>
+    <div class="tracklist" id="tracks">
+      ${c.tracks.map((t, i) => `
+        <div class="trow" data-id="${esc(t.id)}">
+          <span class="n">${i + 1}</span>
+          <span class="t">${esc(t.name)}</span>
+          <span class="a">${esc(t.artists)}</span>
+          <span class="y" style="color:#6f6f6f;font-size:.72rem;min-width:34px;text-align:right">${t.year || ""}</span>
+        </div>`).join("")}
+    </div>`);
+  $("back").onclick = () => { state.current = null; state.searchResults = null; renderHome(); };
+  $("start").onclick = () => startPlaylist();
+  $("voicetest").onclick = () => {
+    speak('So klingt die Ansage: „Take Five“ von The Dave Brubeck Quartet, 1959.');
+  };
+}
+
+/* ---------------------------------------------------------------- Player (Web Playback SDK) */
+function initSdk() {
+  if (window.Spotify) { onSdkReady(); return; }
+  window.onSpotifyWebPlaybackSDKReady = onSdkReady;
+  const s = document.createElement("script");
+  s.src = "https://sdk.scdn.co/spotify-player.js";
+  s.onerror = () => showNotice("Player konnte nicht geladen werden (Netz?).");
+  document.body.appendChild(s);
+}
+
+let sdkReadyResolve;
+const sdkReady = new Promise(r => { sdkReadyResolve = r; });
+
+function onSdkReady() {
+  const player = new Spotify.Player({
+    name: "Spotify Moderator",
+    getOAuthToken: async (cb) => {
+      if (!auth.valid()) await refreshTokens();
+      cb(auth.tokens ? auth.tokens.access : "");
+    },
+    volume: 0.8
+  });
+  state.player = player;
+  player.addListener("ready", ({ device_id }) => {
+    state.deviceId = device_id;
+    sdkReadyResolve(device_id);
+  });
+  player.addListener("not_ready", () => { state.deviceId = null; });
+  player.addListener("initialization_error", ({ message }) => showNotice("Player-Start fehlgeschlagen: " + message));
+  player.addListener("authentication_error", () => showNotice("Spotify-Anmeldung für den Player ungültig."));
+  player.addListener("account_error", () => showNotice("Wiedergabe im Browser braucht Spotify Premium."));
+  player.addListener("playback_error", ({ message }) => showNotice("Wiedergabefehler: " + message));
+  player.addListener("player_state_changed", onPlayerState);
+  player.connect();
+}
+
+async function startPlaylist() {
+  if (!state.current) return;
+  setStatus("Starte …");
+  try {
+    const dev = state.deviceId || await sdkReady;
+    await api(`/me/player/play?device_id=${encodeURIComponent(dev)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context_uri: "spotify:playlist:" + state.current.id })
+    });
+    $("controls").className = "show";
+    setStatus("");
+  } catch (e) {
+    setStatus("");
+    showNotice("Start fehlgeschlagen: " + e.message);
+  }
+}
+
+function onPlayerState(s) {
+  if (!s) { state.playing = false; updateControls(); return; }
+  const track = s.track_window && s.track_window.current_track;
+  state.playing = !s.paused;
+  if (track) {
+    $("now-text").textContent = track.name + " – " + (track.artists || []).map(a => a.name).join(", ");
+    document.querySelectorAll(".trow.now").forEach(e => e.classList.remove("now"));
+    if (state.current) {
+      const row = document.querySelector(`.trow[data-id="${track.id}"]`);
+      if (row) row.classList.add("now");
+    }
+    $("controls").className = "show";
+    updateControls();
+    // Wiederholte Titel derselben Playlist (Repeat) erneut ansagen:
+    const prev = (s.track_window.previous_tracks || []).slice(-1)[0];
+    const isRepeat = !!(prev && prev.id === track.id);
+    if (state.announce && !s.paused && (track.id !== state.lastAnnounced || isRepeat) && !state.announcing) {
+      state.lastAnnounced = track.id;
+      announceTrack(track);
+    }
+  } else {
+    updateControls();
+  }
+}
+
+function updateControls() {
+  $("playpause").innerHTML = state.playing ? ICONS.pause : ICONS.play;
+  $("prev").innerHTML = ICONS.prev;
+  $("next").innerHTML = ICONS.next;
+  $("announce").className = "pb small" + (state.announce ? " on" : "");
+  $("announce").innerHTML = state.announce ? ICONS.volOn : ICONS.volOff;
+}
+
+async function announceTrack(track) {
+  if (state.announcing) return;
+  state.announcing = true;
+  const title = track.name;
+  const artist = (track.artists || []).map(a => a.name).join(", ");
+  const meta = state.trackMeta.get(track.id);
+  const year = (meta && meta.year) || null;
+  const text = `„${title}“ von ${artist}${year ? ", " + year : ""}.`;
+  setStatus("Ansage: " + text);
+  try {
+    await sdkCall("pause");
+    await speak(text);
+    await sdkCall("seek", 0);
+    await sdkCall("resume");
+  } catch (e) {
+    /* Ansage darf die Wiedergabe nie blockieren */
+  } finally {
+    state.announcing = false;
+    setStatus("");
+  }
+}
+
+function sdkCall(fn, arg) {
+  return new Promise((resolve, reject) => {
+    if (!state.player) return resolve();
+    const p = arg === undefined ? state.player[fn]() : state.player[fn](arg);
+    if (p && typeof p.then === "function") p.then(() => resolve()).catch(reject);
+    else resolve();
+  });
+}
+
+/* ---------------------------------------------------------------- TTS */
+let speakChain = Promise.resolve();
+function speak(text) {
+  speakChain = speakChain.then(() => new Promise((resolve) => {
+    if (!("speechSynthesis" in window)) return resolve();
+    try { speechSynthesis.cancel(); } catch {}
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "de-DE";
+    u.rate = 1.0;
+    u.pitch = 1.0;
+    const v = pickGermanVoice();
+    if (v) u.voice = v;
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    u.onend = finish;
+    u.onerror = finish;
+    setTimeout(finish, 20000);           // Notausstieg, falls onend nie kommt
+    try { speechSynthesis.speak(u); } catch { finish(); }
+  }));
+  return speakChain;
+}
+
+function pickGermanVoice() {
+  try {
+    const vs = speechSynthesis.getVoices() || [];
+    return vs.find(v => /^de/i.test(v.lang) && /female|katja|hedda|marlene/i.test(v.name))
+        || vs.find(v => /^de/i.test(v.lang)) || null;
+  } catch { return null; }
+}
+
+/* ---------------------------------------------------------------- Start */
+async function boot() {
+  setHint("");
+
+  // OAuth-Rücksprung
+  const params = new URLSearchParams(location.search);
+  if (params.get("code")) {
+    history.replaceState({}, "", location.pathname);
+    try { await exchangeCode(params.get("code")); }
+    catch (e) { showLogin(e.message); return; }
+  }
+
+  if (!auth.tokens) { showLogin(); return; }
+
+  if (!auth.valid() && !(await refreshTokens())) { showLogin("Sitzung abgelaufen."); return; }
+
+  initSdk();
+  updateControls();
+
+  try {
+    await loadPlaylists();
+    renderHome();
+  } catch (e) {
+    showNotice("Playlists konnten nicht geladen werden: " + e.message);
+    shell(`<button class="btn" id="retry">Erneut versuchen</button>`);
+    $("retry").onclick = () => boot();
+  }
+}
+
+/* Steuerleiste */
+$("playpause").onclick = () => { if (state.player) state.player.togglePlay(); };
+$("prev").onclick = () => { if (state.player) state.player.previousTrack(); };
+$("next").onclick = () => { if (state.player) state.player.nextTrack(); };
+$("announce").onclick = () => {
+  state.announce = !state.announce;
+  localStorage.setItem(LS_ANN, state.announce ? "1" : "0");
+  updateControls();
+  showNotice(state.announce ? "Ansagen an" : "Ansagen aus", true);
+};
+
+/* Für Tests / Konsole */
+window.MODERATOR = {
+  state, login, boot, openPlaylist, doSearch, announceTrack, speak,
+  setAnnounce: (v) => { state.announce = !!v; updateControls(); }
+};
+
+boot();
+</script>
+</body>
+</html>

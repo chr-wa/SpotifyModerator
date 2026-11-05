@@ -1,0 +1,10 @@
+{
+  "name": "Spotify Moderator",
+  "short_name": "Moderator",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#121212",
+  "theme_color": "#121212",
+  "lang": "de",
+  "description": "Spielt Spotify-Playlists und sagt vor jedem Titel Interpret, Titel und Jahr an."
+}
