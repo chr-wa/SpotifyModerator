@@ -23,6 +23,8 @@
     pl("p1", "[MOD] Favoriten"),
     pl("p2", "[MOD] Abendessen mit Jazz"),
     pl("p3", "[MOD] Hörspiel-Sammlung"),
+    pl("p6", "[MOD] Gesperrt (403)"),
+    pl("p7", "[MOD] Nur ohne Feldfilter"),
     pl("p4", "[KPM] KinderPlayer – darf nicht erscheinen"),
     pl("p5", "Ohne Präfix – darf nicht erscheinen")
   ];
@@ -66,6 +68,17 @@
       return t ? json(t) : new Response("not found", { status: 404 });
     }
     if (u.includes("/tracks?")) {
+      if (u.includes("playlists/p6")) {
+        return new Response(JSON.stringify({ error: { status: 403, message: "Forbidden" } }),
+          { status: 403, headers: { "Content-Type": "application/json" } });
+      }
+      if (u.includes("playlists/p7")) {
+        if (u.includes("fields=")) {
+          return new Response(JSON.stringify({ error: { status: 400, message: "Invalid request" } }),
+            { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        return json({ items: TRACKS.slice(0, 2).map(t => ({ track: t })) });
+      }
       if (u.includes("playlists/p3")) {
         return json({ items: [
           { episode: { id: "e1", name: "Folge 12: Der Zoo", duration_ms: 1800000, release_date: "2024-03-02",
