@@ -20,16 +20,12 @@ Single-File-App: `index.html`, kein Framework, kein Build.
 
 ## Playlists
 
-Die App zeigt alle eigenen Playlists, deren Name mit einem Präfix beginnt:
+Die App zeigt alle eigenen Playlists, deren Name mit **`[MOD]`** beginnt – das
+Präfix ist nur zur Auswahl da und wird in der Anzeige abgeschnitten. Alles ohne
+Präfix erscheint nicht; dafür gibt es die Suche oben.
 
-| Präfix | Kategorie |
-|---|---|
-| `[KPM]` | Musik |
-| `[KPH]` | Hörspiele |
-| `[KPP]` | Podcasts |
-
-Das Präfix wird nur zur Sortierung benutzt und in der Anzeige abgeschnitten.
-Alles ohne Präfix erscheint nicht — dafür gibt es die Suche oben.
+Bewusst **nicht** die KinderPlayer-Präfixe (`[KPM]`/`[KPH]`/`[KPP]`): das hier ist
+ein eigenes Projekt mit eigenem Namensraum.
 
 ## Wiedergabe und Ansage
 

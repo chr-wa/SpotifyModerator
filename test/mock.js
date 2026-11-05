@@ -20,10 +20,11 @@
   });
 
   const PLAYLISTS = [
-    pl("p1", "[KPM] Favoriten"),
-    pl("p2", "[KPM] Abendessen mit Jazz"),
-    pl("p3", "[KPH] Benjamin Blümchen"),
-    pl("p4", "Ohne Präfix – darf nicht erscheinen")
+    pl("p1", "[MOD] Favoriten"),
+    pl("p2", "[MOD] Abendessen mit Jazz"),
+    pl("p3", "[MOD] Hörspiel-Sammlung"),
+    pl("p4", "[KPM] KinderPlayer – darf nicht erscheinen"),
+    pl("p5", "Ohne Präfix – darf nicht erscheinen")
   ];
 
   const SEARCH = [
@@ -59,6 +60,11 @@
     }
     if (u.includes("api.spotify.com/v1/me/playlists")) return json({ items: PLAYLISTS });
     if (u.includes("api.spotify.com/v1/search")) return json({ playlists: { items: SEARCH } });
+    if (u.includes("api.spotify.com/v1/tracks/")) {
+      const id = u.split("/tracks/")[1].split("?")[0];
+      const t = TRACKS.find(x => x.id === id);
+      return t ? json(t) : new Response("not found", { status: 404 });
+    }
     if (u.includes("/tracks?")) {
       if (u.includes("playlists/p3")) {
         return json({ items: [

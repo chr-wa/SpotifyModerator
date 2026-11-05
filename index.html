@@ -128,20 +128,13 @@ const SCOPES = "streaming user-read-email user-read-private user-read-playback-s
 const API = "https://api.spotify.com/v1";
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const LS_TOKENS = "mod.tokens", LS_PKCE = "mod.pkce", LS_YEARS = "mod.years", LS_ANN = "mod.announce";
-const PREFIXES = [
-  { key: "music",   label: "Musik",     prefix: "[KPM]" },
-  { key: "audio",   label: "Hörspiele", prefix: "[KPH]" },
-  { key: "podcast", label: "Podcasts",  prefix: "[KPP]" }
-];
+const PREFIX = "[MOD]";   // eigenes Projekt – bewusst NICHT die KinderPlayer-Präfixe
 
 /* ---------------------------------------------------------------- Kleinkram */
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const stripPrefix = (name) => {
-  const p = PREFIXES.find(x => name && name.startsWith(x.prefix));
-  return p ? name.slice(p.prefix.length).trim() : name;
-};
-const prefixOf = (name) => (PREFIXES.find(x => name && name.startsWith(x.prefix)) || null);
+const stripPrefix = (name) => (name && name.startsWith(PREFIX)) ? name.slice(PREFIX.length).trim() : name;
+const hasPrefix = (name) => !!(name && name.startsWith(PREFIX));
 
 let noticeTimer = null;
 function showNotice(msg, ok) {
@@ -304,16 +297,12 @@ function renderHome() {
       <button id="qbtn" title="Suchen">🔍</button>
     </div>`;
   if (!isSearch) {
-    const byCat = PREFIXES.map(c => ({
-      c, list: state.playlists.filter(p => p.name && p.name.startsWith(c.prefix))
-    })).filter(x => x.list.length);
-    if (!byCat.length) {
-      html += `<div class="section">Keine Playlists mit Präfix gefunden</div>
-        <p style="color:var(--dim);font-size:.85rem;line-height:1.5">
-        Lege in Spotify Playlists an, deren Name mit <b>[KPM]</b> (Musik), <b>[KPH]</b> (Hörspiele)
-        oder <b>[KPP]</b> (Podcasts) beginnt – oder nutze die Suche oben.</p>`;
+    if (!state.playlists.length) {
+      html += `<p style="color:var(--dim);font-size:.85rem;line-height:1.5;margin-top:22px">
+        Lege in Spotify eine Playlist an, deren Name mit <b>[MOD]</b> beginnt – sie erscheint dann hier.
+        Oder nutze die Suche oben.</p>`;
     } else {
-      for (const g of byCat) html += `<div class="section">${esc(g.c.label)}</div>` + grid(g.list);
+      html += `<div class="section">Moderator-Playlists</div>` + grid(state.playlists);
     }
   } else {
     html += state.searchResults.length
@@ -368,7 +357,7 @@ async function doSearch(q) {
 
 async function loadPlaylists() {
   const r = await api("/me/playlists?limit=50");
-  state.playlists = ((r.items) || []).filter(p => p && p.name && prefixOf(p.name)).map(p => ({
+  state.playlists = ((r.items) || []).filter(p => p && hasPrefix(p.name)).map(p => ({
     id: p.id, name: p.name,
     cover: p.images && p.images.length ? p.images[p.images.length - 1].url : null,
     owner: ""
@@ -579,12 +568,12 @@ async function announceTrack(track) {
   state.announcing = true;
   const title = track.name;
   const artist = (track.artists || []).map(a => a.name).join(", ");
-  const meta = state.trackMeta.get(track.id);
-  const year = (meta && meta.year) || null;
-  const text = `„${title}“ von ${artist}${year ? ", " + year : ""}.`;
-  setStatus("Ansage: " + text);
   try {
-    await sdkCall("pause");
+    await sdkCall("pause");               // erst pausieren, dann alles Weitere
+    let year = (state.trackMeta.get(track.id) || {}).year || null;
+    if (!year) year = await lookupYear(track);   // z.B. Titel nicht in der geladenen Liste
+    const text = `„${title}“ von ${artist}${year ? ", " + year : ""}.`;
+    setStatus("Ansage: " + text);
     await speak(text);
     await sdkCall("seek", 0);
     await sdkCall("resume");
@@ -594,6 +583,20 @@ async function announceTrack(track) {
     state.announcing = false;
     setStatus("");
   }
+}
+
+async function lookupYear(track) {
+  try {
+    const t = await api(`/tracks/${encodeURIComponent(track.id)}`);
+    if (!t || !t.album) return null;
+    const y = yearFromAlbum(t.album);
+    if (y) state.trackMeta.set(track.id, {
+      id: track.id, name: track.name,
+      artists: (t.artists || []).map(a => a.name).join(", "),
+      year: y, albumType: t.album.album_type
+    });
+    return y;
+  } catch { return null; }
 }
 
 function sdkCall(fn, arg) {
