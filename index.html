@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Spotify Moderator</title>
 <link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png" sizes="192x192">
+<link rel="icon" href="icon-512.png" sizes="512x512">
 <style>
 :root{
   --bg:#121212; --card:#1e1e1e; --card2:#252525; --txt:#f2f2f2; --dim:#9a9a9a;
@@ -899,6 +902,13 @@ window.MODERATOR = {
 };
 
 boot();
+
+/* Service Worker registrieren (macht die App installierbar) */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => { /* egal, App läuft auch ohne */ });
+  });
+}
 </script>
 </body>
 </html>

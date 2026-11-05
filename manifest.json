@@ -1,10 +1,19 @@
 {
   "name": "Spotify Moderator",
   "short_name": "Moderator",
+  "description": "Spielt Spotify-Playlists und sagt vor jedem Titel Interpret, Titel und Jahr an.",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "display_override": ["standalone", "browser"],
+  "orientation": "portrait",
   "background_color": "#121212",
   "theme_color": "#121212",
   "lang": "de",
-  "description": "Spielt Spotify-Playlists und sagt vor jedem Titel Interpret, Titel und Jahr an."
+  "categories": ["music", "entertainment"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
 }
