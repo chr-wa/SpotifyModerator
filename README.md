@@ -33,8 +33,14 @@ ein eigenes Projekt mit eigenem Namensraum.
 ## Wiedergabe und Ansage
 
 - **Web-Playback-SDK** (braucht Spotify **Premium** und einen sicheren Kontext/HTTPS).
-- Bei jedem Titelwechsel: Wiedergabe **pausieren** → Ansage → auf 0 zurückspulen → weiter.
-  Kein Ducking, kein zweiter Lautsprecher — die Ansage kommt aus derselben Quelle.
+- Bei jedem Titelwechsel: Lautstärke auf 2 % → **pausieren** → Ansage → auf 0
+  zurückspulen → Lautstärke zurück → weiter. Das Stummschalten ist nötig, weil
+  `pause()` im SDK einen Moment braucht und bei laut beginnenden Titeln die Stimme
+  sonst untergeht; zusätzlich wartet die App eine aus der Textlänge geschätzte
+  Mindestdauer ab, damit ein verfrühtes `onend` die Musik nicht zu früh startet.
+- Stimme: männliche deutsche Stimme wird bevorzugt (Markus, Stefan, Conrad, Klaus …),
+  auswählbar über „Stimme" unten auf der Startseite. Sprechgeschwindigkeit 0,95.
+- Klick auf die Überschrift **Moderator** führt zurück ins Hauptmenü.
 - Jahre kommen aus `album.release_date`. Bei Compilations/Singles ist das
   unzuverlässig („Bohemian Rhapsody“ steht auf *Greatest Hits* mit 2011), deshalb
   fragt die App für alles, was kein `album_type == "album"` ist, **MusicBrainz**

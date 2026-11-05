@@ -108,7 +108,11 @@
   };
 
   // Sprachausgabe (Attribute auf window sind read-only -> defineProperty)
-  window.__voices = [{ lang: "de-DE", name: "Mock German" }];
+  window.__voices = [
+    { lang: "de-DE", name: "Anna" },
+    { lang: "de-DE", name: "Microsoft Stefan" },
+    { lang: "en-US", name: "Samantha" }
+  ];
   Object.defineProperty(window, "speechSynthesis", {
     configurable: true,
     value: {
@@ -133,6 +137,7 @@
     connect() { setTimeout(() => this.emit("ready", { device_id: "dev-mock" }), 20); return true; }
     disconnect() {}
     pause() { window.__calls.push("pause"); return Promise.resolve(); }
+    setVolume(v) { window.__calls.push("setVolume:" + v); this.volume = v; return Promise.resolve(); }
     resume() { window.__calls.push("resume"); return Promise.resolve(); }
     seek(ms) { window.__calls.push("seek:" + ms); return Promise.resolve(); }
     togglePlay() { window.__calls.push("togglePlay"); return Promise.resolve(); }

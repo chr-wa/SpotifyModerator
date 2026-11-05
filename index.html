@@ -17,7 +17,8 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 body{padding:0 14px 130px;min-height:100vh}
 h1{position:relative;font-size:1.25rem;font-weight:600;text-align:center;
-  margin:16px 0 14px;padding:0 42px;letter-spacing:.02em}
+  margin:16px 0 14px;padding:0 42px;letter-spacing:.02em;cursor:pointer}
+h1:active{opacity:.6}
 h1 .hint{position:absolute;top:1px;right:0;font-size:.7rem;font-weight:600;color:#6f6f6f}
 
 /* Suche */
@@ -40,6 +41,13 @@ h1 .hint{position:absolute;top:1px;right:0;font-size:.7rem;font-weight:600;color
 .tile .sub{padding:0 10px 10px;margin-top:-4px;font-size:.7rem;color:var(--dim)}
 .section{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);
   margin:20px 2px 10px}
+
+/* Stimmenwahl */
+.voicebar{display:flex;align-items:center;gap:8px;margin:26px 2px 0;font-size:.78rem;color:var(--dim)}
+.voicebar select{flex:1;min-width:0;background:var(--card);color:var(--txt);border:1px solid #333;
+  border-radius:9px;padding:9px 10px;font-size:.8rem}
+.voicebar button{background:var(--card);border:1px solid #333;color:var(--txt);border-radius:9px;
+  padding:9px 12px;font-size:.78rem;cursor:pointer}
 
 /* Detail */
 .detail-head{display:flex;gap:12px;align-items:center;margin:4px 0 14px}
@@ -96,7 +104,7 @@ h1 .hint{position:absolute;top:1px;right:0;font-size:.7rem;font-weight:600;color
 </head>
 <body>
 
-<h1><span id="title-text">Moderator</span><span class="hint" id="hint"></span></h1>
+<h1 id="home" title="Zum Hauptmenü"><span id="title-text">Moderator</span><span class="hint" id="hint"></span></h1>
 
 <div id="app">
   <div id="loading" class="spinner"></div>
@@ -149,6 +157,19 @@ function showNotice(msg, ok) {
 }
 function setStatus(t) { $("status").textContent = t || ""; }
 function setHint(t) { $("hint").textContent = t || ""; }
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const DUCK_VOLUME = 0.02;   // Musik fast stumm, solange die Ansage läuft
+
+function goHome() {
+  if (!auth.tokens) return;
+  state.current = null;
+  state.searchResults = null;
+  state.query = "";
+  setHint("");
+  renderHome();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
 
 /* ---------------------------------------------------------------- Auth (PKCE) */
 function b64url(bytes) {
@@ -263,7 +284,7 @@ const state = {
   current: null,            // {id,name,cover,tracks}
   trackMeta: new Map(),     // trackId -> {title, artists, year, albumType, album}
   announce: localStorage.getItem(LS_ANN) !== "0",
-  deviceId: null, player: null, playing: false,
+  deviceId: null, player: null, playing: false, volume: 0.8,
   lastAnnounced: null, announcing: false
 };
 
@@ -312,6 +333,7 @@ function renderHome() {
       ? grid(state.searchResults)
       : `<p style="color:var(--dim);font-size:.85rem;margin-top:26px">Nichts gefunden für „${esc(state.query)}".</p>`;
   }
+  if (!isSearch) html += voiceBarHtml();
   shell(html);
   $("q").onkeydown = (e) => { if (e.key === "Enter") doSearch($("q").value.trim()); };
   $("qbtn").onclick = () => doSearch($("q").value.trim());
@@ -322,6 +344,7 @@ function renderHome() {
     $("app").appendChild(back);
   }
   bindTiles();
+  bindVoiceBar();
 }
 
 function grid(list) {
@@ -597,24 +620,37 @@ function updateControls() {
 }
 
 async function announceTrack(track) {
-  if (state.announcing) return;
+  if (state.announcing || !state.player) return;
   state.announcing = true;
   const title = track.name;
   const artist = (track.artists || []).map(a => a.name).join(", ");
+  const volBack = state.volume;
   try {
-    await sdkCall("pause");               // erst pausieren, dann alles Weitere
+    // Musik sofort stummschalten. Pause allein reicht nicht: das SDK braucht
+    // einen Moment, und bei laut beginnenden Titeln geht die Stimme sonst unter.
+    await sdkCall("setVolume", DUCK_VOLUME);
+    await sdkCall("pause");
+    await sleep(250);
     let year = (state.trackMeta.get(track.id) || {}).year || null;
     if (!year) year = await lookupYear(track);   // z.B. Titel nicht in der geladenen Liste
     const text = `„${title}“ von ${artist}${year ? ", " + year : ""}.`;
     setStatus("Ansage: " + text);
+    // Untergrenze gegen ein zu früh gemeldetes "onend": ~3 Wörter/Sekunde
+    const words = text.split(/\s+/).filter(Boolean).length;
+    const minMs = 500 + words * 330;
+    const t0 = Date.now();
     await speak(text);
+    const rest = minMs - (Date.now() - t0);
+    if (rest > 0) await sleep(rest);
     await sdkCall("seek", 0);
+    await sdkCall("setVolume", volBack);
     await sdkCall("resume");
   } catch (e) {
     /* Ansage darf die Wiedergabe nie blockieren */
   } finally {
     state.announcing = false;
     setStatus("");
+    if (state.player) { try { state.player.setVolume(volBack); } catch {} }
   }
 }
 
@@ -641,6 +677,59 @@ function sdkCall(fn, arg) {
   });
 }
 
+/* ---------------------------------------------------------------- Stimmen */
+const VOICE_LS = "mod.voice";
+const MALE_RE = /markus|yannick|conrad|klaus|stefan|michael|hans|daniel|male|männlich|man\b/i;
+
+function germanVoices() {
+  try { return (speechSynthesis.getVoices() || []).filter(v => /^de/i.test(v.lang)); }
+  catch { return []; }
+}
+
+/* Reihenfolge: gespeicherte Wahl -> männliche Stimme -> erste deutsche. */
+function pickGermanVoice() {
+  const vs = germanVoices();
+  if (!vs.length) return null;
+  const saved = localStorage.getItem(VOICE_LS);
+  if (saved) { const v = vs.find(x => x.name === saved); if (v) return v; }
+  return vs.find(v => MALE_RE.test(v.name)) || vs[0];
+}
+
+function voiceBarHtml() {
+  return `<div class="voicebar">
+    <label for="voicesel">Stimme</label>
+    <select id="voicesel"></select>
+    <button id="vtest">Anhören</button>
+  </div>`;
+}
+
+function fillVoices() {
+  const sel = $("voicesel");
+  if (!sel) return;
+  const vs = germanVoices();
+  const saved = localStorage.getItem(VOICE_LS);
+  const active = pickGermanVoice();
+  sel.innerHTML = vs.length
+    ? vs.map(v => `<option value="${esc(v.name)}"${active && v.name === active.name ? " selected" : ""}>${esc(v.name)}${MALE_RE.test(v.name) ? " ♂" : ""}</option>`).join("")
+    : `<option value="">keine deutschen Stimmen gefunden</option>`;
+  if (saved && vs.some(v => v.name === saved)) sel.value = saved;
+}
+
+function bindVoiceBar() {
+  const sel = $("voicesel");
+  if (!sel) return;
+  fillVoices();
+  sel.onchange = () => { localStorage.setItem(VOICE_LS, sel.value); };
+  $("vtest").onclick = () => {
+    speak('So klingt die Ansage: „Take Five“ von The Dave Brubeck Quartet, 1959.');
+  };
+  // Stimmenliste kommt in Chrome asynchron nach
+  if ("speechSynthesis" in window && !window.__voicesBound) {
+    window.__voicesBound = true;
+    try { speechSynthesis.onvoiceschanged = fillVoices; } catch {}
+  }
+}
+
 /* ---------------------------------------------------------------- TTS */
 let speakChain = Promise.resolve();
 function speak(text) {
@@ -649,8 +738,8 @@ function speak(text) {
     try { speechSynthesis.cancel(); } catch {}
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "de-DE";
-    u.rate = 1.0;
-    u.pitch = 1.0;
+    u.rate = 0.95;
+    u.pitch = 0.95;
     const v = pickGermanVoice();
     if (v) u.voice = v;
     let done = false;
@@ -661,14 +750,6 @@ function speak(text) {
     try { speechSynthesis.speak(u); } catch { finish(); }
   }));
   return speakChain;
-}
-
-function pickGermanVoice() {
-  try {
-    const vs = speechSynthesis.getVoices() || [];
-    return vs.find(v => /^de/i.test(v.lang) && /female|katja|hedda|marlene/i.test(v.name))
-        || vs.find(v => /^de/i.test(v.lang)) || null;
-  } catch { return null; }
 }
 
 /* ---------------------------------------------------------------- Start */
@@ -701,6 +782,7 @@ async function boot() {
 }
 
 /* Steuerleiste */
+$("home").onclick = () => goHome();
 $("playpause").onclick = () => { if (state.player) state.player.togglePlay(); };
 $("prev").onclick = () => { if (state.player) state.player.previousTrack(); };
 $("next").onclick = () => { if (state.player) state.player.nextTrack(); };
