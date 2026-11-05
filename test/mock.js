@@ -110,11 +110,11 @@
   };
 
   // Sprachausgabe (Attribute auf window sind read-only -> defineProperty)
+  // Ausgangslage wie auf vielen Geräten: nur EINE US-Stimme, und die ist weiblich
   window.__voices = [
     { lang: "de-DE", name: "Anna" },
     { lang: "de-DE", name: "Microsoft Stefan" },
     { lang: "en-US", name: "Samantha" },
-    { lang: "en-US", name: "Microsoft David" },
     { lang: "en-GB", name: "Daniel" }
   ];
   Object.defineProperty(window, "speechSynthesis", {

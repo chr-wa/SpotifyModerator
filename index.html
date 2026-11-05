@@ -48,6 +48,8 @@ h1 .hint{position:absolute;top:1px;right:0;font-size:.7rem;font-weight:600;color
   border-radius:9px;padding:9px 10px;font-size:.8rem}
 .voicebar button{background:var(--card);border:1px solid #333;color:var(--txt);border-radius:9px;
   padding:9px 12px;font-size:.78rem;cursor:pointer}
+.voicehint{display:none;margin:8px 4px 0;font-size:.72rem;line-height:1.45;color:#c9a227}
+.voicehint.show{display:block}
 
 /* Detail */
 .detail-head{display:flex;gap:12px;align-items:center;margin:4px 0 14px}
@@ -683,14 +685,21 @@ function sdkCall(fn, arg) {
 const VOICE_LS = "mod.voice", LANG_LS = "mod.lang";
 const MALE_RE = {
   de: /markus|yannick|conrad|klaus|stefan|michael|hans|daniel|männlich|male/i,
-  en: /david|mark\b|george|james|daniel|arthur|alex|fred|oliver|guy|male/i
+  en: /alex|aaron|fred|tom\b|david|mark\b|james|guy|daniel|oliver|male/i
 };
 
 function curLang() { return localStorage.getItem(LANG_LS) === "de" ? "de" : "en"; }
 
+/* Englisch = ausschliesslich amerikanisches Englisch (en-US). Nur wenn das Gerät
+   gar keine US-Stimme hat, nehmen wir irgendeine englische als Notnagel. */
 function voicesFor(lang) {
-  try { return (speechSynthesis.getVoices() || []).filter(v => new RegExp("^" + lang, "i").test(v.lang)); }
-  catch { return []; }
+  let all = [];
+  try { all = speechSynthesis.getVoices() || []; } catch { return []; }
+  if (lang === "en") {
+    const us = all.filter(v => /^en[-_]us/i.test(v.lang));
+    return us.length ? us : all.filter(v => /^en/i.test(v.lang));
+  }
+  return all.filter(v => /^de/i.test(v.lang));
 }
 
 /* Reihenfolge: gespeicherte Wahl -> männliche Stimme -> erste Stimme der Sprache. */
@@ -703,14 +712,19 @@ function pickVoice() {
   return vs.find(v => MALE_RE[lang].test(v.name)) || vs[0];
 }
 
+function maleAvailable(lang) {
+  return voicesFor(lang).some(v => MALE_RE[lang].test(v.name));
+}
+
 function voiceBarHtml() {
   return `<div class="voicebar">
     <select id="langsel" aria-label="Sprache">
-      <option value="en">English</option><option value="de">Deutsch</option>
+      <option value="en">English (US)</option><option value="de">Deutsch</option>
     </select>
     <select id="voicesel" aria-label="Stimme"></select>
     <button id="vtest">Anhören</button>
-  </div>`;
+  </div>
+  <div class="voicehint" id="voicehint"></div>`;
 }
 
 function fillVoices() {
@@ -722,6 +736,19 @@ function fillVoices() {
   sel.innerHTML = vs.length
     ? vs.map(v => `<option value="${esc(v.name)}"${active && v.name === active.name ? " selected" : ""}>${esc(v.name)}${MALE_RE[lang].test(v.name) ? " ♂" : ""}</option>`).join("")
     : `<option value="">keine ${lang === "en" ? "englische" : "deutsche"} Stimme gefunden</option>`;
+
+  const hint = $("voicehint");
+  if (hint) {
+    if (lang === "en" && vs.length && !maleAvailable("en")) {
+      hint.innerHTML = "Keine männliche US-Stimme auf diesem Gerät installiert. " +
+        "iPhone/iPad: Einstellungen → Bedienungshilfen → Gesprochene Inhalte → Stimmen → " +
+        "Englisch (USA) → <b>Alex</b> laden. Android: Einstellungen → System → Sprachen → " +
+        "Text-to-Speech → Stimme installieren.";
+      hint.className = "voicehint show";
+    } else {
+      hint.className = "voicehint";
+    }
+  }
   const saved = localStorage.getItem(VOICE_LS);
   if (saved && vs.some(v => v.name === saved)) sel.value = saved;
 }
@@ -816,7 +843,7 @@ $("announce").onclick = () => {
 
 /* Für Tests / Konsole */
 window.MODERATOR = {
-  state, login, boot, openPlaylist, doSearch, announceTrack, speak,
+  state, login, boot, openPlaylist, doSearch, announceTrack, speak, fillVoices, goHome,
   setAnnounce: (v) => { state.announce = !!v; updateControls(); }
 };
 
