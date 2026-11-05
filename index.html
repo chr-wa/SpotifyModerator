@@ -344,7 +344,7 @@ async function doSearch(q) {
   state.query = q;
   shell(`<div class="spinner"></div>`);
   try {
-    const r = await api("/search?" + new URLSearchParams({ q, type: "playlist", limit: "24" }));
+    const r = await api("/search?" + new URLSearchParams({ q, type: "playlist", limit: "10" }));
     const items = (r.playlists && r.playlists.items) || [];
     state.searchResults = items.filter(Boolean).map(p => ({
       id: p.id, name: p.name,
@@ -367,17 +367,28 @@ async function loadPlaylists() {
   }));
 }
 
-const TRACK_FIELDS = "items(track(id,name,duration_ms,artists(name),album(id,name,release_date,album_type,images,artists(name))),episode(id,name,duration_ms,release_date,images,show(name,publisher)))";
-
-/* Spotify liefert bei eigenen/redaktionellen Playlists 403. Zweiter Versuch ohne
-   Feld-Filter, weil der bei manchen Playlist-Typen ebenfalls abgelehnt wird. */
-async function fetchPlaylistTracks(id) {
-  const base = `/playlists/${id}/tracks?limit=100`;
-  try {
-    return await api(base + "&fields=" + encodeURIComponent(TRACK_FIELDS));
-  } catch (e) {
-    if (!/40[03]|403|400/.test(e.message)) throw e;
-    return await api(base);          // wirft bei 403 erneut -> Aufrufer zeigt Klartext
+/* Spotify Web API seit Feb 2026: /tracks ist abgeschaltet (403), Nachfolger ist
+   /items. Antwortfelder heißen "item" statt "track", limit max. 50 -> wir blaettern.
+   Der /tracks-Zweig bleibt als Rueckfall fuer aeltere Konten. */
+async function fetchPlaylistItems(id) {
+  const base = `/playlists/${encodeURIComponent(id)}`;
+  const collect = async (kind) => {
+    const out = [];
+    let offset = 0, total = Infinity;
+    while (offset < total && offset < 300) {
+      const r = await api(`${base}/${kind}?limit=50&offset=${offset}&additional_types=track,episode`);
+      const items = r.items || [];
+      out.push(...items);
+      total = typeof r.total === "number" ? r.total : out.length;
+      if (!items.length) break;
+      offset += items.length;
+    }
+    return out;
+  };
+  try { return await collect("items"); }
+  catch (e) {
+    if (!/40[03]/.test(e.message)) throw e;
+    return await collect("tracks");
   }
 }
 
@@ -385,8 +396,9 @@ async function openPlaylist(id, name) {
   setHint("");
   shell(`<div class="spinner"></div>`);
   try {
-    const r = await fetchPlaylistTracks(id);
-    const raw = (r.items || []).map(i => i && (i.track || i.episode)).filter(t => t && t.id);
+    const items = await fetchPlaylistItems(id);
+    const raw = items.map(i => i && (i.item || i.track || i.episode))
+                     .filter(t => t && t.id);
     const cover = raw.find(t => (t.album || t).images && (t.album || t).images.length);
     state.current = {
       id, name: stripPrefix(name),
@@ -407,9 +419,8 @@ async function openPlaylist(id, name) {
     enrichYears(state.current.tracks).catch(() => {});
   } catch (e) {
     if (/40[03]/.test(e.message)) {
-      showNotice("Diese Playlist gibt Spotify nicht frei (403). Betroffen sind meist " +
-        "Spotify-eigene/redaktionelle Listen – eigene Playlists mit [MOD] funktionieren. " +
-        "Alternativ den Titel über die Suche in eine eigene Playlist kopieren.");
+      showNotice("Spotify gibt nur Playlists frei, die dir gehören oder an denen du " +
+        "Mitarbeiter bist. Fremde und redaktionelle Listen liefern 403.");
     } else {
       showNotice("Playlist konnte nicht geladen werden: " + e.message);
     }

@@ -1,6 +1,6 @@
-// Mock für den Browser-Test: Spotify-API, Web-Playback-SDK und Sprachausgabe
-// werden ersetzt, damit die App ohne Token, ohne Premium und ohne Widevine
-// bis in den echten Wiedergabe-Zustand läuft.
+// Mock für den Browser-Test: Spotify-API (Stand Feb 2026: /playlists/{id}/items),
+// Web-Playback-SDK und Sprachausgabe werden ersetzt, damit die App ohne Token,
+// ohne Premium und ohne Widevine bis in den echten Wiedergabe-Zustand läuft.
 (() => {
   if (!location.search.includes("notoken")) {
     localStorage.setItem("mod.tokens", JSON.stringify({
@@ -23,8 +23,8 @@
     pl("p1", "[MOD] Favoriten"),
     pl("p2", "[MOD] Abendessen mit Jazz"),
     pl("p3", "[MOD] Hörspiel-Sammlung"),
-    pl("p6", "[MOD] Gesperrt (403)"),
-    pl("p7", "[MOD] Nur ohne Feldfilter"),
+    pl("p6", "[MOD] Fremde Playlist (403)"),
+    pl("p8", "[MOD] Langer Abend (60 Titel)"),
     pl("p4", "[KPM] KinderPlayer – darf nicht erscheinen"),
     pl("p5", "Ohne Präfix – darf nicht erscheinen")
   ];
@@ -46,6 +46,18 @@
       album: { id: "a3", name: "Greatest Hits", release_date: "2011-01-01", album_type: "compilation", images: [{ url: IMG }], artists: [{ name: "x" }] } }
   ];
 
+  // 60 Titel für den Blätter-Test (limit ist seit Feb 2026 auf 50 gedeckelt)
+  const LONG = Array.from({ length: 60 }, (_, i) => ({
+    id: "L" + i, name: "Stück " + (i + 1),
+    artists: [{ name: "Langspieler" }],
+    album: { id: "aG", name: "Langer Abend", release_date: "2001-05-05", album_type: "album", images: [{ url: IMG }], artists: [{ name: "x" }] }
+  }));
+
+  const EPISODE = {
+    id: "e1", name: "Folge 12: Der Zoo", duration_ms: 1800000, release_date: "2024-03-02",
+    images: [{ url: IMG }], show: { name: "Benjamin Blümchen", publisher: "Kiddinx" }
+  };
+
   window.__fetches = [];
   window.__spoken = [];
   window.__calls = [];
@@ -53,10 +65,13 @@
   const json = (data) => new Response(JSON.stringify(data), {
     status: 200, headers: { "Content-Type": "application/json" }
   });
+  const forbidden = () => new Response(
+    JSON.stringify({ error: { status: 403, message: "Forbidden" } }),
+    { status: 403, headers: { "Content-Type": "application/json" } });
 
   window.fetch = async (url, opts) => {
     const u = String(url);
-    window.__fetches.push(u.split("?")[0] + (u.includes("?") ? "?" + u.split("?")[1].slice(0, 40) : ""));
+    window.__fetches.push(u.replace("https://api.spotify.com/v1", ""));
     if (u.includes("accounts.spotify.com/api/token")) {
       return json({ access_token: "mock-access-2", refresh_token: "mock-refresh-2", expires_in: 3600 });
     }
@@ -64,29 +79,27 @@
     if (u.includes("api.spotify.com/v1/search")) return json({ playlists: { items: SEARCH } });
     if (u.includes("api.spotify.com/v1/tracks/")) {
       const id = u.split("/tracks/")[1].split("?")[0];
-      const t = TRACKS.find(x => x.id === id);
+      const t = TRACKS.concat(LONG).find(x => x.id === id);
       return t ? json(t) : new Response("not found", { status: 404 });
     }
-    if (u.includes("/tracks?")) {
-      if (u.includes("playlists/p6")) {
-        return new Response(JSON.stringify({ error: { status: 403, message: "Forbidden" } }),
-          { status: 403, headers: { "Content-Type": "application/json" } });
-      }
-      if (u.includes("playlists/p7")) {
-        if (u.includes("fields=")) {
-          return new Response(JSON.stringify({ error: { status: 400, message: "Invalid request" } }),
-            { status: 400, headers: { "Content-Type": "application/json" } });
-        }
-        return json({ items: TRACKS.slice(0, 2).map(t => ({ track: t })) });
-      }
-      if (u.includes("playlists/p3")) {
-        return json({ items: [
-          { episode: { id: "e1", name: "Folge 12: Der Zoo", duration_ms: 1800000, release_date: "2024-03-02",
-            images: [{ url: IMG }], show: { name: "Benjamin Blümchen", publisher: "Kiddinx" } } }
-        ] });
-      }
-      return json({ items: TRACKS.map(t => ({ track: t })) });
+
+    // Seit Feb 2026 ist /items der Endpunkt; /tracks liefert 403 (wie in echt)
+    if (u.includes("/items?") || u.includes("/tracks?")) {
+      if (u.includes("/tracks?")) return forbidden();
+      if (u.includes("playlists/p6")) return forbidden();
+      const qs = new URLSearchParams(u.split("?")[1] || "");
+      const limit = Math.min(parseInt(qs.get("limit") || "50", 10), 50);
+      const offset = parseInt(qs.get("offset") || "0", 10);
+      let src;
+      if (u.includes("playlists/p3")) src = [EPISODE];
+      else if (u.includes("playlists/p8")) src = LONG;
+      else src = TRACKS;
+      return json({
+        total: src.length, limit, offset,
+        items: src.slice(offset, offset + limit).map(x => ({ item: x }))
+      });
     }
+
     if (u.includes("/me/player/play")) return new Response(null, { status: 204 });
     if (u.includes("musicbrainz.org")) {
       return json({ recordings: [{ "first-release-date": "1975-10-31" }] });
