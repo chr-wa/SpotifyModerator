@@ -103,7 +103,17 @@
       });
     }
 
-    if (u.includes("/me/player/play")) { if (opts && opts.body) window.__bodies.push(opts.body); return new Response(null, { status: 204 }); }
+    if (u.includes("/me/player/play")) {
+      if (opts && opts.body) window.__bodies.push(opts.body);
+      // Position 1 simulieren wir als "nicht abspielbar" (Ländersperre)
+      let pos = null;
+      try { pos = JSON.parse(opts.body).offset && JSON.parse(opts.body).offset.position; } catch (e) {}
+      if (pos === 1) {
+        return new Response(JSON.stringify({ error: { status: 403, message: "Player command failed: Restriction violated", reason: "UNKNOWN" } }),
+          { status: 403, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(null, { status: 204 });
+    }
     if (u.includes("musicbrainz.org")) {
       return json({ recordings: [{ "first-release-date": "1975-10-31" }] });
     }

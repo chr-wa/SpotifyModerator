@@ -615,26 +615,44 @@ async function startPlaylist() {
   }
 }
 
-/* Tippen auf einen Titel: die Playlist startet an genau dieser Position. */
+/* Tippen auf einen Titel: die Playlist startet an genau dieser Position.
+   Nicht abspielbare Titel (Ländersperre, lokale Datei) antworten mit 403
+   "Restriction violated" — dann rückt die App selbst weiter. */
 async function playTrackAt(index, trackId) {
   if (!state.current) return;
+  const tracks = state.current.tracks;
+  const dev = state.deviceId || await sdkReady;
   setStatus("Starte …");
-  document.querySelectorAll(".trow.now").forEach(e => e.classList.remove("now"));
-  const row = document.querySelector(`.trow[data-idx="${index}"]`);
-  if (row) row.classList.add("now");
+  const skipped = [];
   try {
-    const dev = state.deviceId || await sdkReady;
-    await api(`/me/player/play?device_id=${encodeURIComponent(dev)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        context_uri: "spotify:playlist:" + state.current.id,
-        offset: { position: index }
-      })
-    });
-    $("controls").className = "show";
-    state.lastStarted = { id: state.current.id, name: state.current.name };
+    for (let i = index; i < Math.min(index + 5, tracks.length); i++) {
+      document.querySelectorAll(".trow.now").forEach(e => e.classList.remove("now"));
+      const row = document.querySelector(`.trow[data-idx="${i}"]`);
+      if (row) row.classList.add("now");
+      try {
+        await api(`/me/player/play?device_id=${encodeURIComponent(dev)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            context_uri: "spotify:playlist:" + state.current.id,
+            offset: { position: i }
+          })
+        });
+        $("controls").className = "show";
+        state.lastStarted = { id: state.current.id, name: state.current.name };
+        setStatus("");
+        if (skipped.length) {
+          showNotice("Nicht abspielbar (Ländersperre oder lokale Datei), übersprungen: " +
+            skipped.map(t => "„" + t + "“").join(", "));
+        }
+        return;
+      } catch (e) {
+        if (!/restriction/i.test(e.message || "")) throw e;
+        skipped.push(tracks[i] ? tracks[i].name : "Titel " + (i + 1));
+      }
+    }
     setStatus("");
+    showNotice("Keiner der nächsten Titel ist bei Spotify abspielbar.");
   } catch (e) {
     setStatus("");
     showNotice("Titel konnte nicht gestartet werden: " + e.message);
