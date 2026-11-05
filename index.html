@@ -641,12 +641,12 @@ async function announceTrack(track) {
     setStatus("Ansage: " + text);
     // Untergrenze gegen ein zu früh gemeldetes "onend": ~3 Wörter/Sekunde
     const words = text.split(/\s+/).filter(Boolean).length;
-    const minMs = 500 + words * 330;
+    const minMs = Math.min(8000, 500 + words * 330);
     const t0 = Date.now();
     await speak(text);
     const rest = minMs - (Date.now() - t0);
     if (rest > 0) await sleep(rest);
-    await sdkCall("seek", 0);
+    // Kein seek(0): der Titel läuft an der Stelle weiter, an der pausiert wurde.
     await sdkCall("setVolume", volBack);
     await sdkCall("resume");
   } catch (e) {
@@ -794,7 +794,7 @@ function speak(text) {
     const finish = () => { if (!done) { done = true; resolve(); } };
     u.onend = finish;
     u.onerror = finish;
-    setTimeout(finish, 20000);           // Notausstieg, falls onend nie kommt
+    setTimeout(finish, 12000);           // Notausstieg, falls onend nie kommt
     try { speechSynthesis.speak(u); } catch { finish(); }
   }));
   return speakChain;
