@@ -163,6 +163,21 @@ function setHint(t) { $("hint").textContent = t || ""; }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const DUCK_VOLUME = 0.02;   // Musik fast stumm, solange die Ansage läuft
 
+/* Sanftes Aus-/Einblenden: das SDK kennt nur setVolume, also rampen wir in Schritten. */
+async function fadeTo(target, ms) {
+  const from = state.volumeNow;
+  const steps = Math.max(4, Math.round(ms / 40));
+  const dt = Math.max(1, Math.round(ms / steps));
+  for (let i = 1; i <= steps; i++) {
+    const v = from + (target - from) * (i / steps);
+    state.volumeNow = v;
+    await sdkCall("setVolume", Math.max(0, Math.min(1, v)));
+    await sleep(dt);
+  }
+  state.volumeNow = target;
+  await sdkCall("setVolume", target);
+}
+
 function goHome() {
   if (!auth.tokens) return;
   state.current = null;
@@ -286,7 +301,7 @@ const state = {
   current: null,            // {id,name,cover,tracks}
   trackMeta: new Map(),     // trackId -> {title, artists, year, albumType, album}
   announce: localStorage.getItem(LS_ANN) !== "0",
-  deviceId: null, player: null, playing: false, volume: 0.8,
+  deviceId: null, player: null, playing: false, volume: 0.8, volumeNow: 0.8,
   lastAnnounced: null, announcing: false
 };
 
@@ -628,11 +643,11 @@ async function announceTrack(track) {
   const artist = (track.artists || []).map(a => a.name).join(", ");
   const volBack = state.volume;
   try {
-    // Musik sofort stummschalten. Pause allein reicht nicht: das SDK braucht
-    // einen Moment, und bei laut beginnenden Titeln geht die Stimme sonst unter.
-    await sdkCall("setVolume", DUCK_VOLUME);
+    // Musik sanft ausblenden, dann pausieren. Pause allein reicht nicht: das SDK
+    // braucht einen Moment, und bei laut beginnenden Titeln geht die Stimme sonst unter.
+    await fadeTo(DUCK_VOLUME, 350);
     await sdkCall("pause");
-    await sleep(250);
+    await sleep(150);
     let year = (state.trackMeta.get(track.id) || {}).year || null;
     if (!year) year = await lookupYear(track);   // z.B. Titel nicht in der geladenen Liste
     const text = curLang() === "en"
@@ -647,14 +662,14 @@ async function announceTrack(track) {
     const rest = minMs - (Date.now() - t0);
     if (rest > 0) await sleep(rest);
     // Kein seek(0): der Titel läuft an der Stelle weiter, an der pausiert wurde.
-    await sdkCall("setVolume", volBack);
     await sdkCall("resume");
+    await fadeTo(volBack, 600);      // leise reinfahren statt harter Sprung
   } catch (e) {
     /* Ansage darf die Wiedergabe nie blockieren */
   } finally {
     state.announcing = false;
     setStatus("");
-    if (state.player) { try { state.player.setVolume(volBack); } catch {} }
+    if (state.player) { try { state.player.setVolume(volBack); state.volumeNow = volBack; } catch {} }
   }
 }
 
