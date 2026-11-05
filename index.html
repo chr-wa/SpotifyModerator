@@ -120,7 +120,10 @@ h1 .hint{position:absolute;top:1px;right:0;font-size:.7rem;font-weight:600;color
 
 /* ---------------------------------------------------------------- Konfiguration */
 const CLIENT_ID = "a6c7e7f802d043c29cce919b9e0c7f45";
-const PROD_REDIRECT = "https://chr-wa.github.io/SpotifyModerator/";
+// Muss zeichengenau der Redirect-URI im Spotify-Dashboard entsprechen.
+// Dort ist "https://chr-wa.github.io/SpotifyModerator" (OHNE Slash) eingetragen;
+// GitHub Pages leitet auf die Slash-Variante um und behaelt ?code=... bei.
+const PROD_REDIRECT = "https://chr-wa.github.io/SpotifyModerator";
 const REDIRECT_URI = (location.hostname === "127.0.0.1" || location.hostname === "localhost")
   ? location.origin + location.pathname
   : PROD_REDIRECT;

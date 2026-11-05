@@ -11,9 +11,12 @@ Single-File-App: `index.html`, kein Framework, kein Build.
 1. **Spotify-Dashboard** → App `KinderPlayer` (Client-ID `a6c7e7f802d043c29cce919b9e0c7f45`)
    → *Redirect URIs* ergänzen:
    ```
-   https://chr-wa.github.io/SpotifyModerator/
+   https://chr-wa.github.io/SpotifyModerator
    ```
-   (Ohne diesen Eintrag antwortet Spotify mit `INVALID_CLIENT: Invalid redirect URI`.)
+   **Ohne Schrägstrich am Ende** – Spotify vergleicht zeichengenau, und genau so ist
+   sie im Dashboard eingetragen. GitHub Pages leitet danach auf die Slash-Variante um
+   und behält `?code=…` bei.
+   (Ohne diesen Eintrag antwortet Spotify mit `redirect_uri: Not matching configuration`.)
 2. **Repo anlegen**: `chr-wa/SpotifyModerator` (public, ohne README) und den
    Hermes-SSH-Key wieder als Deploy-Key/Account-Key hinterlegen.
 3. Push auf `main` → GitHub Pages ist nach ~60–90 s live.
