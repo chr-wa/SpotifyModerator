@@ -152,8 +152,11 @@
   window.Spotify = { Player: MockPlayer };
 
   // Trackwechsel simulieren
-  window.__track = (id, name, artists) => window.__player.emit("player_state_changed", {
+  window.__track = (id, name, artists, ctxId, ctxName) => window.__player.emit("player_state_changed", {
     paused: false,
-    track_window: { current_track: { id, name, artists: artists.map(a => ({ name: a })) } }
+    track_window: {
+      current_track: { id, name, artists: artists.map(a => ({ name: a })) },
+      context: { uri: "spotify:playlist:" + (ctxId || "p1"), metadata: { context_description: ctxName || "[MOD] Favoriten" } }
+    }
   });
 })();
