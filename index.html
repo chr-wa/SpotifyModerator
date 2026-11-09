@@ -90,6 +90,9 @@ h1 .hint{position:absolute;top:1px;right:0;font-size:.7rem;font-weight:600;color
 .pb.primary{font-size:2rem;color:var(--green)}
 .pb.small{font-size:1.05rem;color:var(--dim)}
 .pb.small.on{color:var(--yellow)}
+#preview{font-size:.72rem;font-weight:700;letter-spacing:.02em;border:1px solid #3a3a3a;
+  border-radius:8px;padding:5px 8px;color:var(--dim)}
+#preview.on{color:#0b2e13;background:var(--yellow);border-color:var(--yellow)}
 
 /* Meldungen */
 #notice{position:fixed;left:12px;right:12px;bottom:96px;z-index:30;display:none;
@@ -119,6 +122,7 @@ h1 .hint{position:absolute;top:1px;right:0;font-size:.7rem;font-weight:600;color
 <div id="controls">
   <div class="now" id="nowbar" title="Zur Playlist des laufenden Titels"><span class="dot" id="dot"></span><span class="txt" id="now-text">–</span></div>
   <div class="row">
+    <button class="pb small" id="preview" aria-label="30-Sekunden-Vorschau">30s</button>
     <button class="pb" id="prev" aria-label="Zurück"></button>
     <button class="pb primary" id="playpause" aria-label="Play/Pause"></button>
     <button class="pb" id="next" aria-label="Weiter"></button>
@@ -144,7 +148,7 @@ const REDIRECT_URI = (location.hostname === "127.0.0.1" || location.hostname ===
 const SCOPES = "streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state playlist-read-private playlist-read-collaborative";
 const API = "https://api.spotify.com/v1";
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
-const LS_TOKENS = "mod.tokens", LS_PKCE = "mod.pkce", LS_YEARS = "mod.years", LS_ANN = "mod.announce";
+const LS_TOKENS = "mod.tokens", LS_PKCE = "mod.pkce", LS_YEARS = "mod.years", LS_ANN = "mod.announce", LS_PREVIEW = "mod.preview";
 const PREFIX = "[MOD]";   // eigenes Projekt – bewusst NICHT die KinderPlayer-Präfixe
 
 /* ---------------------------------------------------------------- Kleinkram */
@@ -305,6 +309,7 @@ const state = {
   current: null,            // {id,name,cover,tracks}
   trackMeta: new Map(),     // trackId -> {title, artists, year, albumType, album}
   announce: localStorage.getItem(LS_ANN) !== "0",
+  preview: localStorage.getItem(LS_PREVIEW) === "1", previewTimer: null,
   deviceId: null, player: null, playing: false, volume: 0.8, volumeNow: 0.8,
   lastAnnounced: null, announcing: false,
   currentTrackId: null, playingPlaylistId: null, playingPlaylistName: null, lastStarted: null
@@ -714,6 +719,7 @@ function onPlayerState(s) {
   } else {
     updateControls();
   }
+  schedulePreviewSkip(s);
 }
 
 function updateControls() {
@@ -722,6 +728,25 @@ function updateControls() {
   $("next").innerHTML = ICONS.next;
   $("announce").className = "pb small" + (state.announce ? " on" : "");
   $("announce").innerHTML = state.announce ? ICONS.volOn : ICONS.volOff;
+  $("preview").className = "pb small" + (state.preview ? " on" : "");
+}
+
+/* Vorschau-Modus: nach 30 s Laufzeit automatisch zum nächsten Titel.
+   Die Restzeit kommt aus der Abspielposition, damit Pausen (etwa während der
+   Ansage) nicht mitzählen. */
+const PREVIEW_MS = 30000;
+
+function schedulePreviewSkip(s) {
+  clearTimeout(state.previewTimer);
+  state.previewTimer = null;
+  if (!state.preview || !state.player) return;
+  if (state.announcing) return;               // während der Ansage nicht weiterschalten
+  if (!s || s.paused) return;                 // pausiert -> keine Vorschau-Uhr
+  const rest = PREVIEW_MS - (s.position || 0);
+  if (rest <= 0) { state.player.nextTrack(); return; }
+  state.previewTimer = setTimeout(() => {
+    try { state.player.nextTrack(); } catch {}
+  }, rest);
 }
 
 /* Titelzeile im Player: Titel – Interpret, Jahr. Das Jahr fehlt, wenn der Titel
@@ -741,6 +766,8 @@ function setNowPlaying(track) {
 async function announceTrack(track) {
   if (state.announcing || !state.player) return;
   state.announcing = true;
+  clearTimeout(state.previewTimer);           // Vorschau-Uhr ruht, solange gesprochen wird
+  state.previewTimer = null;
   const title = track.name;
   const artist = (track.artists || []).map(a => a.name).join(", ");
   const volBack = state.volume;
@@ -772,6 +799,10 @@ async function announceTrack(track) {
     state.announcing = false;
     setStatus("");
     if (state.player) { try { state.player.setVolume(volBack); state.volumeNow = volBack; } catch {} }
+    // Nach der Ansage die Vorschau-Uhr neu stellen (Restzeit ab aktueller Position)
+    if (state.preview && state.player) {
+      state.player.getCurrentState().then(s => schedulePreviewSkip(s)).catch(() => {});
+    }
   }
 }
 
@@ -911,6 +942,23 @@ $("announce").onclick = () => {
   localStorage.setItem(LS_ANN, state.announce ? "1" : "0");
   updateControls();
   showNotice(state.announce ? "Ansagen an" : "Ansagen aus", true);
+};
+$("preview").onclick = () => {
+  state.preview = !state.preview;
+  localStorage.setItem(LS_PREVIEW, state.preview ? "1" : "0");
+  updateControls();
+  if (state.preview) {
+    showNotice("Vorschau an: jeder Titel läuft 30 Sekunden", true);
+    if (state.player) {
+      state.player.getCurrentState()
+        .then(s => schedulePreviewSkip(s))
+        .catch(() => {});
+    }
+  } else {
+    clearTimeout(state.previewTimer);
+    state.previewTimer = null;
+    showNotice("Vorschau aus", true);
+  }
 };
 
 /* Für Tests / Konsole */

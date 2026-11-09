@@ -148,7 +148,8 @@
   class MockPlayer {
     constructor(opts) { this.opts = opts; this._l = {}; window.__player = this; }
     addListener(ev, fn) { (this._l[ev] = this._l[ev] || []).push(fn); return true; }
-    emit(ev, payload) { (this._l[ev] || []).forEach(fn => fn(payload)); }
+    emit(ev, payload) { window.__lastState = payload; (this._l[ev] || []).forEach(fn => fn(payload)); }
+    getCurrentState() { return Promise.resolve(window.__lastState || null); }
     connect() { setTimeout(() => this.emit("ready", { device_id: "dev-mock" }), 20); return true; }
     disconnect() {}
     pause() { window.__calls.push("pause"); return Promise.resolve(); }
@@ -162,8 +163,9 @@
   window.Spotify = { Player: MockPlayer };
 
   // Trackwechsel simulieren (context liegt – wie im echten SDK – auf oberster Ebene)
-  window.__track = (id, name, artists, ctxId, ctxName) => window.__player.emit("player_state_changed", {
+  window.__track = (id, name, artists, ctxId, ctxName, position) => window.__player.emit("player_state_changed", {
     paused: false,
+    position: position || 0,
     context: { uri: "spotify:playlist:" + (ctxId || "p1"), metadata: { context_description: ctxName || "[MOD] Favoriten" } },
     track_window: { current_track: { id, name, artists: artists.map(a => ({ name: a })) } }
   });
