@@ -312,7 +312,8 @@ const state = {
   preview: localStorage.getItem(LS_PREVIEW) === "1", previewTimer: null,
   deviceId: null, player: null, playing: false, volume: 0.8, volumeNow: 0.8,
   lastAnnounced: null, announcing: false,
-  currentTrackId: null, playingPlaylistId: null, playingPlaylistName: null, lastStarted: null
+  currentTrackId: null, playingPlaylistId: null, playingPlaylistName: null, lastStarted: null,
+  keepAlive: null
 };
 
 /* ---------------------------------------------------------------- Icons */
@@ -689,7 +690,7 @@ async function jumpToPlayingPlaylist() {
 }
 
 function onPlayerState(s) {
-  if (!s) { state.playing = false; updateControls(); return; }
+  if (!s) { state.playing = false; updateControls(); stopKeepAlive(); return; }
   const track = s.track_window && s.track_window.current_track;
   state.playing = !s.paused;
   // Kontext merken: aus welcher Playlist läuft das gerade?
@@ -719,6 +720,8 @@ function onPlayerState(s) {
   } else {
     updateControls();
   }
+  if (state.playing) startKeepAlive(); else stopKeepAlive();
+  updateMediaSession(track);
   schedulePreviewSkip(s);
 }
 
@@ -735,6 +738,20 @@ function updateControls() {
    Die Restzeit kommt aus der Abspielposition, damit Pausen (etwa während der
    Ansage) nicht mitzählen. */
 const PREVIEW_MS = 30000;
+const PREVIEW_FADE_OUT_MS = 1500;
+
+async function previewSkip() {
+  if (!state.player) return;
+  try {
+    await fadeTo(0, PREVIEW_FADE_OUT_MS);        // weich ausblenden statt hartem Schnitt
+    state.player.nextTrack();
+    await sleep(400);
+    // Läuft gleich eine Ansage, regelt die den Pegel selbst wieder hoch
+    if (!state.announcing) await fadeTo(state.volume, 700);
+  } catch {
+    try { state.player.setVolume(state.volume); state.volumeNow = state.volume; } catch {}
+  }
+}
 
 function schedulePreviewSkip(s) {
   clearTimeout(state.previewTimer);
@@ -743,10 +760,73 @@ function schedulePreviewSkip(s) {
   if (state.announcing) return;               // während der Ansage nicht weiterschalten
   if (!s || s.paused) return;                 // pausiert -> keine Vorschau-Uhr
   const rest = PREVIEW_MS - (s.position || 0);
-  if (rest <= 0) { state.player.nextTrack(); return; }
-  state.previewTimer = setTimeout(() => {
-    try { state.player.nextTrack(); } catch {}
-  }, rest);
+  if (rest <= 0) { previewSkip(); return; }
+  state.previewTimer = setTimeout(previewSkip, rest);
+}
+
+/* ---------------------------------------------------- Hintergrund-Ton */
+/* Android friert Hintergrund-Tabs ein, dann verstummt das SDK. Zwei Hebel:
+   1) ein stummer Dauer-Stream laesst den Tab als "spielt Medien" gelten
+   2) Media Session: Titel und Steuerung erscheinen auf dem Sperrbildschirm */
+function silentWavUrl(seconds) {
+  const sr = 8000, n = Math.floor(sr * (seconds || 1));
+  const buf = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buf);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); ws(8, "WAVE"); ws(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, "data"); v.setUint32(40, n * 2, true);
+  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+}
+
+function startKeepAlive() {
+  try {
+    if (state.keepAlive) {
+      // Falls der Browser den Start ohne Geste verweigert hat: bei jeder
+      // Zustandsaenderung erneut versuchen
+      if (state.keepAlive.paused) state.keepAlive.play().catch(() => {});
+      return;
+    }
+    const a = new Audio(silentWavUrl(1));
+    a.loop = true;
+    a.volume = 0.01;                  // nicht komplett stumm: stumme Medien zaehlen nicht
+    a.setAttribute("playsinline", "");
+    a.play().catch(() => {});
+    state.keepAlive = a;
+  } catch {}
+}
+
+function stopKeepAlive() {
+  try {
+    if (state.keepAlive) { state.keepAlive.pause(); state.keepAlive.src = ""; state.keepAlive = null; }
+  } catch {}
+}
+
+function updateMediaSession(track) {
+  if (!("mediaSession" in navigator)) return;
+  try {
+    if (track) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.name,
+        artist: (track.artists || []).map(a => a.name).join(", "),
+        album: (track.album && track.album.name) || "",
+        artwork: ((track.album && track.album.images) || []).slice(0, 3)
+          .map(i => ({ src: i.url, sizes: (i.width || 300) + "x" + (i.height || 300) }))
+      });
+    }
+    navigator.mediaSession.playbackState = state.playing ? "playing" : "paused";
+  } catch {}
+}
+
+function initMediaSession() {
+  if (!("mediaSession" in navigator)) return;
+  const h = (action, fn) => { try { navigator.mediaSession.setActionHandler(action, fn); } catch {} };
+  h("play", () => state.player && state.player.resume());
+  h("pause", () => state.player && state.player.pause());
+  h("nexttrack", () => state.player && state.player.nextTrack());
+  h("previoustrack", () => state.player && state.player.previousTrack());
 }
 
 /* Titelzeile im Player: Titel – Interpret, Jahr. Das Jahr fehlt, wenn der Titel
@@ -919,6 +999,7 @@ async function boot() {
   if (!auth.valid() && !(await refreshTokens())) { showLogin("Sitzung abgelaufen."); return; }
 
   initSdk();
+  initMediaSession();
   updateControls();
 
   try {
