@@ -48,7 +48,10 @@
       album: { id: "a3", name: "Greatest Hits", release_date: "2011-01-01", album_type: "compilation", images: [{ url: IMG }], artists: [{ name: "x" }] } },
     { id: "t4", name: "A Whiter Shade of Pale", duration_ms: 250000,
       artists: [{ name: "Procol Harum" }],
-      album: { id: "a4", name: "The Best Of (Remastered 2009)", release_date: "2009-03-01", album_type: "album", images: [{ url: IMG }], artists: [{ name: "x" }] } }
+      album: { id: "a4", name: "The Best Of (Remastered 2009)", release_date: "2009-03-01", album_type: "album", images: [{ url: IMG }], artists: [{ name: "x" }] } },
+    { id: "t5", name: "Mammy Blue", duration_ms: 210000,
+      artists: [{ name: "Pop Tops" }],
+      album: { id: "a5", name: "Die grossen Erfolge", release_date: "1999-05-01", album_type: "compilation", images: [{ url: IMG }], artists: [{ name: "x" }] } }
   ];
 
   // 60 Titel für den Blätter-Test (limit ist seit Feb 2026 auf 50 gedeckelt)
@@ -75,9 +78,11 @@
     JSON.stringify({ error: { status: 403, message: "Forbidden" } }),
     { status: 403, headers: { "Content-Type": "application/json" } });
 
+  const realFetch = window.fetch.bind(window);
   window.fetch = async (url, opts) => {
     const u = String(url);
     window.__fetches.push(u.replace("https://api.spotify.com/v1", ""));
+    if (u.includes("wikipedia.org")) return realFetch(url, opts);   // Jahres-Abgleich echt testen
     if (u.includes("accounts.spotify.com/api/token")) {
       return json({ access_token: "mock-access-2", refresh_token: "mock-refresh-2", expires_in: 3600 });
     }

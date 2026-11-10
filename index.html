@@ -148,7 +148,7 @@ const REDIRECT_URI = (location.hostname === "127.0.0.1" || location.hostname ===
 const SCOPES = "streaming user-read-email user-read-private user-read-playback-state user-modify-playback-state playlist-read-private playlist-read-collaborative";
 const API = "https://api.spotify.com/v1";
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
-const LS_TOKENS = "mod.tokens", LS_PKCE = "mod.pkce", LS_YEARS = "mod.years", LS_ANN = "mod.announce", LS_PREVIEW = "mod.preview";
+const LS_TOKENS = "mod.tokens", LS_PKCE = "mod.pkce", LS_YEARS = "mod.years2", LS_ANN = "mod.announce", LS_PREVIEW = "mod.preview";
 const PREFIX = "[MOD]";   // eigenes Projekt – bewusst NICHT die KinderPlayer-Präfixe
 
 /* ---------------------------------------------------------------- Kleinkram */
@@ -460,7 +460,8 @@ async function openPlaylist(id, name) {
           id: t.id, name: t.name,
           artists: isEp ? (t.show ? t.show.name : "Podcast") : (t.artists || []).map(a => a.name).join(", "),
           album: isEp ? (t.show ? t.show.name : "") : (t.album ? t.album.name : ""),
-          year: isEp ? (parseInt(String(t.release_date || "").slice(0, 4), 10) || null) : yearFromAlbum(t.album),
+          year: isEp ? (parseInt(String(t.release_date || "").slice(0, 4), 10) || null)
+                     : (yearCache[t.id] || yearFromAlbum(t.album)),
           albumType: isEp ? "episode" : (t.album ? t.album.album_type : "")
         };
       })
@@ -493,32 +494,133 @@ function saveYearCache() {
   try { localStorage.setItem(LS_YEARS, JSON.stringify(yearCache)); } catch {}
 }
 let mbChain = Promise.resolve();
+/* ------------------------------------------------------- Jahresquellen */
+/* Keine Quelle ist allein verlässlich:
+   - Spotify: release_date des Albums -> Remaster/Reissue-Jahr
+   - MusicBrainz: oft nur späte Wiederveröffentlichungen, manchmal gar nichts
+   - Wikipedia: Erstveröffentlichung des SONGS, bei Covern also der Originalinterpret
+   - iTunes: viele Fassungen, meist das richtige Jahr, gelegentlich Unsinn (1900)
+   Deshalb alle drei fragen, nach Interpret filtern und das früheste plausible
+   Jahr gewinnen lassen. */
+const YEAR_MIN = 1940;
+
+function normKey(s) {
+  return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\[\[|\]\]/g, "").replace(/<[^>]+>/g, "")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function plausibel(y) {
+  const n = parseInt(y, 10);
+  return !isNaN(n) && n >= YEAR_MIN && n <= new Date().getFullYear() + 1 ? n : null;
+}
+
+async function fetchJson(url, ms) {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), ms || 4000);
+  try {
+    const r = await fetch(url, { signal: c.signal });
+    return await r.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/* MusicBrainz, gedrosselt auf eine Anfrage pro Sekunde */
 function musicBrainzYear(title, artist) {
   mbChain = mbChain.then(async () => {
-    await new Promise(r => setTimeout(r, 1100)); // 1 Request/s
+    await new Promise(r => setTimeout(r, 1000));
     const q = `recording:"${title.replace(/"/g, "")}" AND artist:"${artist.replace(/"/g, "")}"`;
-    const r = await fetch("https://musicbrainz.org/ws/2/recording/?query=" +
-      encodeURIComponent(q) + "&fmt=json&limit=1");
-    if (!r.ok) throw new Error("mb " + r.status);
-    const j = await r.json();
-    const rec = j.recordings && j.recordings[0];
-    if (!rec) return null;
-    const d = rec["first-release-date"] || (rec.releases && rec.releases[0] && rec.releases[0].date) || "";
-    const y = parseInt(String(d).slice(0, 4), 10);
-    return isNaN(y) ? null : y;
+    const j = await fetchJson("https://musicbrainz.org/ws/2/recording/?query=" +
+      encodeURIComponent(q) + "&fmt=json&limit=8", 6000);
+    if (!j) return null;
+    const ys = (j.recordings || [])
+      .map(rec => parseInt(String(rec["first-release-date"] ||
+        (rec.releases && rec.releases[0] && rec.releases[0].date) || "").slice(0, 4), 10))
+      .filter(y => plausibel(y));
+    return ys.length ? Math.min(...ys) : null;
   }).catch(() => null);
   return mbChain;
 }
 
+/* Wikipedia: Infobox "released" — nur gültig, wenn dort derselbe Interpret steht.
+   Sonst beschreibt der Artikel die Originalfassung eines anderen Künstlers
+   ("Jealous Guy" = Lennon 1971, nicht Roxy Music 1981). */
+async function wikiYear(title, artist) {
+  const want = normKey(artist);
+  try {
+    const s = await fetchJson("https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&origin=*" +
+      "&srlimit=3&srsearch=" + encodeURIComponent(`${title} ${artist} song`), 4000);
+    for (const h of ((s && s.query && s.query.search) || [])) {
+      const p = await fetchJson("https://en.wikipedia.org/w/api.php?action=parse&format=json&origin=*" +
+        "&prop=wikitext&section=0&page=" + encodeURIComponent(h.title), 4000);
+      const wt = p && p.parse && p.parse.wikitext && p.parse.wikitext["*"];
+      if (!wt) continue;
+      const rel = /\|\s*released\s*=\s*([^\n]+)/i.exec(wt);
+      const ym = rel && /(1[89]\d\d|20\d\d)/.exec(rel[1]);
+      if (!ym) continue;
+      const art = /\|\s*artist\s*=\s*([^\n]+)/i.exec(wt) || /\|\s*performer\s*=\s*([^\n]+)/i.exec(wt);
+      const artN = art ? normKey(art[1]) : "";
+      // Steht im Artikel ein anderer Interpret (Originalfassung), ist das Jahr nur
+      // brauchbar, wenn unser Interpret dort überhaupt vorkommt ("Mamy Blue" nennt
+      // Nicoletta, Pop Tops stehen im Text). Sonst ist es ein fremder Song.
+      if (artN && want && !artN.includes(want) && !want.includes(artN) &&
+          !normKey(wt).includes(want)) continue;
+      const y = plausibel(ym[1]);
+      if (y) return y;
+    }
+  } catch {}
+  return null;
+}
+
+/* iTunes: liefert viele Fassungen mit releaseDate. JSONP, weil die API keine
+   CORS-Header setzt. Frühestes Jahr desselben Interpreten. */
+function itunesYear(title, artist) {
+  return new Promise(resolve => {
+    const cb = "itcb" + Math.random().toString(36).slice(2);
+    const s = document.createElement("script");
+    let done = false;
+    const finish = v => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try { delete window[cb]; } catch { window[cb] = undefined; }
+      s.remove();
+      resolve(v);
+    };
+    const timer = setTimeout(() => finish(null), 6000);
+    window[cb] = data => {
+      const want = normKey(artist);
+      const ys = ((data && data.results) || [])
+        .filter(r => { const a = normKey(r.artistName); return !want || a.includes(want) || want.includes(a); })
+        .map(r => plausibel(String(r.releaseDate || "").slice(0, 4)))
+        .filter(Boolean);
+      finish(ys.length ? Math.min(...ys) : null);
+    };
+    s.onerror = () => finish(null);
+    s.src = "https://itunes.apple.com/search?entity=song&limit=40&country=DE&callback=" + cb +
+      "&term=" + encodeURIComponent(title + " " + artist);
+    document.head.appendChild(s);
+  });
+}
+
+async function bestYear(title, artist, albumYear) {
+  const [w, m, i] = await Promise.all([
+    wikiYear(title, artist), musicBrainzYear(title, artist), itunesYear(title, artist)
+  ]);
+  const ys = [w, m, i, albumYear].map(plausibel).filter(Boolean);
+  return ys.length ? Math.min(...ys) : (albumYear || null);
+}
+
 /* Jahre gegenprüfen: Spotify nennt das release_date des Albums, auf dem der Titel
    liegt — bei Remastern und Wiederveröffentlichungen ist das das Reissue-Jahr.
-   MusicBrainz liefert das Erstveröffentlichungsjahr der Aufnahme; wir nehmen das
-   frühere von beiden. Läuft gedrosselt im Hintergrund (1 Anfrage/s), Ergebnisse
-   landen im Cache. */
+   Läuft gedrosselt im Hintergrund, Ergebnisse landen im Cache. */
 async function enrichYears(tracks) {
   const todo = tracks.filter(t => !yearCache[t.id]);
   for (const t of todo) {
-    const y = await musicBrainzYear(t.name, t.artists.split(",")[0].trim());
+    const y = await bestYear(t.name, t.artists.split(",")[0].trim(), t.year);
     if (!y) continue;
     const best = t.year ? Math.min(t.year, y) : y;
     yearCache[t.id] = best;
