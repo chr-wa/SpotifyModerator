@@ -45,7 +45,10 @@
       album: { id: "a2", name: "Kind of Blue", release_date: "1959-08-17", album_type: "album", images: [{ url: IMG }], artists: [{ name: "x" }] } },
     { id: "t3", name: "Bohemian Rhapsody", duration_ms: 354000,
       artists: [{ name: "Queen" }],
-      album: { id: "a3", name: "Greatest Hits", release_date: "2011-01-01", album_type: "compilation", images: [{ url: IMG }], artists: [{ name: "x" }] } }
+      album: { id: "a3", name: "Greatest Hits", release_date: "2011-01-01", album_type: "compilation", images: [{ url: IMG }], artists: [{ name: "x" }] } },
+    { id: "t4", name: "A Whiter Shade of Pale", duration_ms: 250000,
+      artists: [{ name: "Procol Harum" }],
+      album: { id: "a4", name: "The Best Of (Remastered 2009)", release_date: "2009-03-01", album_type: "album", images: [{ url: IMG }], artists: [{ name: "x" }] } }
   ];
 
   // 60 Titel für den Blätter-Test (limit ist seit Feb 2026 auf 50 gedeckelt)
@@ -115,7 +118,10 @@
       return new Response(null, { status: 204 });
     }
     if (u.includes("musicbrainz.org")) {
-      return json({ recordings: [{ "first-release-date": "1975-10-31" }] });
+      // Remaster-Fall: Erstveröffentlichung 1967
+      const q = decodeURIComponent(u);
+      const y = /Whiter/i.test(q) ? "1967-05-12" : "1975-10-31";
+      return json({ recordings: [{ "first-release-date": y }] });
     }
     return json({});
   };

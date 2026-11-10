@@ -510,20 +510,25 @@ function musicBrainzYear(title, artist) {
   return mbChain;
 }
 
+/* Jahre gegenprüfen: Spotify nennt das release_date des Albums, auf dem der Titel
+   liegt — bei Remastern und Wiederveröffentlichungen ist das das Reissue-Jahr.
+   MusicBrainz liefert das Erstveröffentlichungsjahr der Aufnahme; wir nehmen das
+   frühere von beiden. Läuft gedrosselt im Hintergrund (1 Anfrage/s), Ergebnisse
+   landen im Cache. */
 async function enrichYears(tracks) {
-  const todo = tracks.filter(t => t.albumType && t.albumType !== "album" && !yearCache[t.id]);
+  const todo = tracks.filter(t => !yearCache[t.id]);
   for (const t of todo) {
     const y = await musicBrainzYear(t.name, t.artists.split(",")[0].trim());
-    if (y) {
-      yearCache[t.id] = y;
-      t.year = y;
-      const meta = state.trackMeta.get(t.id);
-      if (meta) meta.year = y;
-      saveYearCache();
-      if (state.current && state.current.id && document.getElementById("tracks")) {
-        const el = document.querySelector(`.trow[data-id="${t.id}"] .y`);
-        if (el) el.textContent = y;
-      }
+    if (!y) continue;
+    const best = t.year ? Math.min(t.year, y) : y;
+    yearCache[t.id] = best;
+    t.year = best;
+    const meta = state.trackMeta.get(t.id);
+    if (meta) meta.year = best;
+    saveYearCache();
+    if (state.current && state.current.id && document.getElementById("tracks")) {
+      const el = document.querySelector(`.trow[data-id="${t.id}"] .y`);
+      if (el) el.textContent = best;
     }
   }
 }
